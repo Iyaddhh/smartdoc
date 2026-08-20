@@ -1,0 +1,20 @@
+# Environment Variables
+.env
+.env.local
+
+# Python / Backend (smartdoc-backend)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.pkl
+*.joblib
+
+# Node.js / Frontend (smartdoc-frontend)
+node_modules/
+.next/
+out/
+
+# Temporary Storage
+uploads/
+temp/
