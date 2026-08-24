@@ -1,20 +1,51 @@
 # Environment Variables
 .env
 .env.local
+.env*.local
 
 # Python / Backend (smartdoc-backend)
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 venv/
+env/
+ENV/
 *.pkl
 *.joblib
+*.pytest_cache/
+*.db
+*.sqlite
+*.sqlite3
 
 # Node.js / Frontend (smartdoc-frontend)
 node_modules/
 .next/
 out/
 
-# Temporary Storage
-uploads/
-temp/
+# Storage / Uploads / Outputs
+storage/documents/originals/*
+!storage/documents/originals/.gitkeep
+storage/documents/outputs/*
+!storage/documents/outputs/.gitkeep
+storage/temp/*
+!storage/temp/.gitkeep
+
+smartdoc-backend/storage/documents/originals/*
+!smartdoc-backend/storage/documents/originals/.gitkeep
+smartdoc-backend/storage/documents/outputs/*
+!smartdoc-backend/storage/documents/outputs/.gitkeep
+smartdoc-backend/storage/temp/*
+!smartdoc-backend/storage/temp/.gitkeep
+
+# Temporary Storage & Logs
+logs/
+*.log
+smartdoc-backend/logs/
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
