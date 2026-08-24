@@ -40,8 +40,8 @@ export default function Sidebar() {
   // Check if current route is inside "Alat Dokumen"
   const isDocToolActive = docToolLinks.some((item) => pathname.startsWith(item.href));
 
-  // Dropdown state: open by default if active or user toggles it
-  const [isDocToolsOpen, setIsDocToolsOpen] = useState(true);
+  // Dropdown state: closed by default
+  const [isDocToolsOpen, setIsDocToolsOpen] = useState(false);
 
   // Auto-expand dropdown when navigating to any doc tool route
   useEffect(() => {
@@ -211,8 +211,17 @@ export default function Sidebar() {
             )}
           </div>
 
-          {/* OCR & History Links */}
+          {/* Additional Features: Template Management, OCR & History Links */}
           <div style={{ marginTop: "6px", display: "flex", flexDirection: "column", gap: "2px" }}>
+            <Link
+              href="/admin/templates"
+              className={`nav-link ${pathname.startsWith("/admin/templates") ? "active" : ""}`}
+              onClick={() => setIsMobileOpen(false)}
+            >
+              <LayoutTemplate size={17} strokeWidth={1.75} />
+              Manajemen Template
+            </Link>
+
             <Link
               href="/scan"
               className={`nav-link ${pathname.startsWith("/scan") ? "active" : ""}`}
@@ -231,47 +240,7 @@ export default function Sidebar() {
               Riwayat Dokumen
             </Link>
           </div>
-
-          {/* Admin Section */}
-          <div className="sidebar-section-label" style={{ marginTop: "20px" }}>
-            Admin
-          </div>
-          {adminLinks.map(({ href, label, icon: Icon }) => {
-            const isActive = pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`nav-link ${isActive ? "active" : ""}`}
-                onClick={() => setIsMobileOpen(false)}
-              >
-                <Icon size={17} strokeWidth={1.75} />
-                {label}
-              </Link>
-            );
-          })}
         </nav>
-
-        {/* Bottom Status Info */}
-        <div style={{ padding: "16px 20px", borderTop: "1px solid var(--color-stone-border)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: "50%",
-                  backgroundColor: "var(--color-cyan-signal)",
-                  display: "inline-block",
-                }}
-              />
-              <span style={{ fontSize: "12px", color: "var(--color-warm-gray)", fontWeight: 400 }}>
-                Sistem Aktif
-              </span>
-            </div>
-            <span style={{ fontSize: "11px", color: "var(--color-ash-gray)" }}>v1.0</span>
-          </div>
-        </div>
       </aside>
     </>
   );

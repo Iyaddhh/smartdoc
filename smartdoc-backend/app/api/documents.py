@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, delete
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from app.db.base import get_db
 from app.models.document import Document
@@ -17,13 +18,20 @@ from app.models.job import Job
 from app.core.config import settings
 from app.core.response import ok_response, fail_response
 from app.core.logger import logger
+from app.core.validators import validate_and_read_upload, validate_file_magic_bytes, validate_image_dimensions
 from app.services.converter import convert_office_to_pdf
 
 router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
 
+import zipfile
+
 class RenameRequest(BaseModel):
     custom_name: str
+
+
+class BatchRequest(BaseModel):
+    ids: list[uuid.UUID]
 
 
 @router.get("")
@@ -57,10 +65,12 @@ async def generate_first_page_preview(file: UploadFile = File(...)):
     beserta thumbnail halaman pertama (Hal 1) untuk dokumen apa pun (PDF, DOCX, XLSX, PPTX, Gambar).
     """
     ext = Path(file.filename).suffix.lower()
-    content = await file.read()
+    content = await validate_and_read_upload(file, ext)
+    validate_file_magic_bytes(content, ext)
 
     # 1. Jika gambar, kembalikan langsung sebagai data URL (1 halaman)
-    if ext in {".jpg", ".jpeg", ".png", ".webp"}:
+    if ext in {".jpg", ".jpeg", ".png"}:
+        validate_image_dimensions(content)
         mime = "image/png" if ext == ".png" else "image/jpeg"
         b64 = base64.b64encode(content).decode("utf-8")
         data_url = f"data:{mime};base64,{b64}"
@@ -159,6 +169,35 @@ async def download_document(
     )
 
 
+@router.get("/{doc_id}/preview")
+async def preview_document(
+    doc_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    doc = await db.get(Document, doc_id)
+    if not doc:
+        return fail_response("Dokumen tidak ditemukan", status_code=404)
+
+    file_path = doc.output_pdf or doc.output_file
+    if not file_path or not os.path.exists(file_path):
+        return fail_response("Berkas pratinjau tidak ditemukan", status_code=404)
+
+    ext = Path(file_path).suffix.lower()
+    media_map = {
+        ".pdf": "application/pdf",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+    }
+    media_type = media_map.get(ext, "application/octet-stream")
+
+    return FileResponse(
+        path=file_path,
+        media_type=media_type,
+        content_disposition_type="inline",
+    )
+
+
 @router.get("/{doc_id}")
 async def get_document(doc_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     doc = await db.get(Document, doc_id)
@@ -213,6 +252,98 @@ async def delete_document(
         logger.error(f"Error saat menghapus dokumen {doc_id}: {e}")
         await db.rollback()
         return fail_response(f"Gagal menghapus dokumen: {str(e)}", status_code=500)
+
+
+@router.post("/batch-delete")
+async def batch_delete_documents(
+    body: BatchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    if not body.ids:
+        return fail_response("Tidak ada dokumen yang dipilih", status_code=400)
+
+    try:
+        deleted_count = 0
+        for doc_id in body.ids:
+            doc = await db.get(Document, doc_id)
+            if doc:
+                for attr in ("original_file", "output_file", "output_docx", "output_pdf"):
+                    path = getattr(doc, attr, None)
+                    if path and os.path.exists(path):
+                        try:
+                            os.remove(path)
+                            logger.info(f"File dihapus: {path}")
+                        except Exception as e:
+                            logger.warning(f"Gagal hapus file {path}: {e}")
+
+                await db.execute(delete(Job).where(Job.document_id == doc_id))
+                await db.delete(doc)
+                deleted_count += 1
+
+        await db.commit()
+        logger.info(f"{deleted_count} dokumen berhasil dihapus secara batch")
+        return ok_response(data={"deleted_count": deleted_count}, message=f"{deleted_count} dokumen berhasil dihapus")
+    except Exception as e:
+        logger.error(f"Batch delete error: {e}")
+        await db.rollback()
+        return fail_response(f"Gagal menghapus dokumen secara massal: {str(e)}", status_code=500)
+
+
+@router.post("/batch-download")
+async def batch_download_documents(
+    body: BatchRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    if not body.ids:
+        return fail_response("Tidak ada dokumen yang dipilih", status_code=400)
+
+    temp_zip_id = str(uuid.uuid4())
+    temp_dir = os.path.join(settings.STORAGE_PATH, "temp")
+    os.makedirs(temp_dir, exist_ok=True)
+    temp_zip_path = os.path.join(temp_dir, f"batch_download_{temp_zip_id}.zip")
+
+    added_files = 0
+    used_names: set[str] = set()
+
+    with zipfile.ZipFile(temp_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for doc_id in body.ids:
+            doc = await db.get(Document, doc_id)
+            if not doc:
+                continue
+
+            file_path = None
+            if doc.feature == "ocr":
+                file_path = doc.output_pdf or doc.output_docx
+            else:
+                file_path = doc.output_file
+
+            if not file_path or not os.path.exists(file_path):
+                continue
+
+            base_name = doc.custom_name or os.path.basename(file_path)
+            stem, ext = os.path.splitext(base_name)
+            final_name = base_name
+            counter = 1
+            while final_name in used_names:
+                final_name = f"{stem} ({counter}){ext}"
+                counter += 1
+
+            used_names.add(final_name)
+            zf.write(file_path, final_name)
+            added_files += 1
+
+    if added_files == 0:
+        if os.path.exists(temp_zip_path):
+            os.remove(temp_zip_path)
+        return fail_response("Tidak ada berkas hasil yang valid untuk diunduh", status_code=404)
+
+    return FileResponse(
+        path=temp_zip_path,
+        filename="smartdoc_batch_download.zip",
+        media_type="application/zip",
+        background=BackgroundTask(os.remove, temp_zip_path),
+    )
+
 
 
 def _doc_to_dict(doc: Document) -> dict:

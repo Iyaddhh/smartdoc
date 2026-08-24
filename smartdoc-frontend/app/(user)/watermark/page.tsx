@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import FileUpload from "@/components/FileUpload";
-import JobProgressCard from "@/components/JobProgressCard";
+import ProcessingModal from "@/components/ProcessingModal";
+import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
 import { useJobPolling } from "@/lib/useJobPolling";
 import { watermarkDocument, getDownloadUrl, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
@@ -48,14 +49,18 @@ export default function WatermarkPage() {
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [doneJob, setDoneJob] = useState<JobStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFileLoading, setIsFileLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const { job, isPolling, error: pollError, elapsedSeconds } = useJobPolling(jobId, {
     onDone: (j) => {
       setDoneJob(j);
+      setIsSubmitting(false);
       showToast("success", "Watermark & keamanan dokumen berhasil diterapkan!", "Proses Selesai");
     },
     onFailed: (j) => {
+      setIsSubmitting(false);
       showToast("error", j.error || "Proses watermark/keamanan gagal.", "Gagal Memproses");
     },
   });
@@ -96,9 +101,8 @@ export default function WatermarkPage() {
       password: enablePassword && password.trim() ? password.trim() : undefined,
     });
 
-    setIsSubmitting(false);
-
     if (!res.success || !res.data) {
+      setIsSubmitting(false);
       const err = res.error || "Gagal memulai proses watermark/proteksi berkas";
       setSubmitError(err);
       showToast("error", err, "Gagal Memproses");
@@ -107,7 +111,6 @@ export default function WatermarkPage() {
 
     setJobId(res.data.job_id);
     setDocumentId(res.data.document_id);
-    showToast("info", "Sedang menerapkan watermark & proteksi berkas...", "Diproses");
   };
 
   const handleReset = () => {
@@ -123,11 +126,14 @@ export default function WatermarkPage() {
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
       {/* Header */}
-      <div className="page-header">
-        <h2>
-          Watermark & <span className="highlight-span">Proteksi Dokumen</span>
-        </h2>
-        <p>Beri cap air visual kustom dan amankan berkas PDF Anda dengan enkripsi kata sandi kuat.</p>
+      <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <h2>
+            Watermark & <span className="highlight-span">Proteksi Dokumen</span>
+          </h2>
+          <p>Beri cap air visual kustom dan amankan berkas PDF Anda dengan enkripsi kata sandi kuat.</p>
+        </div>
+        <GuideButton onClick={() => setShowGuide(true)} />
       </div>
 
       <div className="grid-2" style={{ alignItems: "start" }}>
@@ -142,17 +148,26 @@ export default function WatermarkPage() {
               accept=".pdf,.docx"
               maxSizeMB={50}
               onFileSelected={handleFileSelect}
+              onFileClear={handleReset}
+              onLoadingChange={setIsFileLoading}
               disabled={isSubmitting || !!jobId}
             />
           </div>
 
           {/* Step 2: Watermark Options */}
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Type size={16} style={{ color: "var(--color-cyan-edge)" }} />
-              <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
-                2. Pengaturan Cap Air (Watermark)
-              </h3>
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px", opacity: isFileLoading ? 0.6 : 1 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <Type size={16} style={{ color: "var(--color-cyan-edge)" }} />
+                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                  2. Pengaturan Cap Air (Watermark)
+                </h3>
+              </div>
+              {isFileLoading && (
+                <span style={{ fontSize: "11.5px", color: "var(--color-cyan-edge)", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span className="animate-spin">⟳</span> Menyiapkan...
+                </span>
+              )}
             </div>
 
             {/* Watermark Text Input */}
@@ -164,7 +179,7 @@ export default function WatermarkPage() {
                 className="input"
                 value={watermarkText}
                 onChange={(e) => setWatermarkText(e.target.value)}
-                disabled={!!jobId}
+                disabled={!!jobId || isFileLoading}
                 placeholder="cth: CONFIDENTIAL / RAHASIA"
                 style={{ fontSize: "13px" }}
               />
@@ -174,8 +189,8 @@ export default function WatermarkPage() {
                   <button
                     key={t}
                     type="button"
-                    onClick={() => !jobId && setWatermarkText(t)}
-                    disabled={!!jobId}
+                    onClick={() => !jobId && !isFileLoading && setWatermarkText(t)}
+                    disabled={!!jobId || isFileLoading}
                     style={{
                       fontSize: "11px",
                       padding: "2px 8px",
@@ -183,7 +198,7 @@ export default function WatermarkPage() {
                       background: watermarkText === t ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
                       color: watermarkText === t ? "var(--color-pure-white)" : "var(--color-warm-gray)",
                       border: "1px solid var(--color-stone-border)",
-                      cursor: jobId ? "default" : "pointer",
+                      cursor: (jobId || isFileLoading) ? "default" : "pointer",
                       transition: "var(--transition-fast)",
                     }}
                   >
@@ -210,7 +225,7 @@ export default function WatermarkPage() {
                 step={0.05}
                 value={opacity}
                 onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                disabled={!!jobId}
+                disabled={!!jobId || isFileLoading}
                 style={{ width: "100%", accentColor: "var(--color-cyan-edge)" }}
               />
             </div>
@@ -231,18 +246,18 @@ export default function WatermarkPage() {
                     <button
                       key={item.val}
                       type="button"
-                      onClick={() => !jobId && setAngle(item.val)}
-                      disabled={!!jobId}
+                      onClick={() => !jobId && !isFileLoading && setAngle(item.val)}
+                      disabled={!!jobId || isFileLoading}
                       style={{
                         flex: 1,
-                        padding: "4px",
+                        padding: "4px 8px",
                         fontSize: "12px",
-                        fontWeight: angle === item.val ? 600 : 400,
-                        background: angle === item.val ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
-                        color: angle === item.val ? "var(--color-pure-white)" : "var(--color-ink-black)",
-                        border: "1px solid var(--color-stone-border)",
+                        fontWeight: 500,
                         borderRadius: "var(--radius-inputs)",
-                        cursor: jobId ? "default" : "pointer",
+                        background: angle === item.val ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
+                        color: angle === item.val ? "var(--color-pure-white)" : "var(--color-warm-gray)",
+                        border: "1px solid var(--color-stone-border)",
+                        cursor: (jobId || isFileLoading) ? "default" : "pointer",
                       }}
                     >
                       {item.label}
@@ -261,8 +276,8 @@ export default function WatermarkPage() {
                     <button
                       key={c.hex}
                       type="button"
-                      onClick={() => !jobId && setColorHex(c.hex)}
-                      disabled={!!jobId}
+                      onClick={() => !jobId && !isFileLoading && setColorHex(c.hex)}
+                      disabled={!!jobId || isFileLoading}
                       title={c.label}
                       style={{
                         width: 22,
@@ -271,7 +286,7 @@ export default function WatermarkPage() {
                         background: c.hex,
                         border: colorHex === c.hex ? "2px solid var(--color-ink-black)" : "1px solid rgba(0,0,0,0.15)",
                         transform: colorHex === c.hex ? "scale(1.15)" : "scale(1)",
-                        cursor: jobId ? "default" : "pointer",
+                        cursor: (jobId || isFileLoading) ? "default" : "pointer",
                         transition: "var(--transition-fast)",
                       }}
                     />
@@ -282,7 +297,7 @@ export default function WatermarkPage() {
           </div>
 
           {/* Step 3: Password Security */}
-          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div className="card" style={{ display: "flex", flexDirection: "column", gap: "14px", opacity: isFileLoading ? 0.6 : 1 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Lock size={16} style={{ color: "var(--clr-success)" }} />
@@ -294,7 +309,7 @@ export default function WatermarkPage() {
                 type="checkbox"
                 checked={enablePassword}
                 onChange={(e) => setEnablePassword(e.target.checked)}
-                disabled={!!jobId}
+                disabled={!!jobId || isFileLoading}
                 style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--color-cyan-edge)" }}
               />
             </div>
@@ -310,7 +325,7 @@ export default function WatermarkPage() {
                     className="input"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    disabled={!!jobId}
+                    disabled={!!jobId || isFileLoading}
                     placeholder="Masukkan password kuat..."
                     style={{ fontSize: "13px", paddingRight: "36px" }}
                   />
@@ -348,12 +363,16 @@ export default function WatermarkPage() {
             <button
               className="btn btn-primary btn-lg"
               onClick={handleProcess}
-              disabled={isSubmitting || !file}
+              disabled={isSubmitting || !file || isFileLoading}
               style={{ width: "100%" }}
             >
-              {isSubmitting ? (
+              {isFileLoading ? (
                 <>
                   <span className="animate-spin">⟳</span> Menyiapkan Berkas...
+                </>
+              ) : isSubmitting ? (
+                <>
+                  <span className="animate-spin">⟳</span> Menerapkan Watermark...
                 </>
               ) : (
                 <>
@@ -366,47 +385,35 @@ export default function WatermarkPage() {
 
         {/* Right Column: Interactive Real-time Watermark Preview */}
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {jobId ? (
-            <>
-              <JobProgressCard
-                job={job}
-                isPolling={isPolling}
-                error={pollError || submitError}
-                elapsedSeconds={elapsedSeconds}
-                onRetry={handleProcess}
-              />
-
-              {isDone && documentId && (
-                <div className="result-panel animate-fade-in">
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div className="stat-icon green" style={{ width: 44, height: 44, borderRadius: "50%" }}>
-                      <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
-                    </div>
-                    <div>
-                      <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
-                        Dokumen Berhasil Diamankan!
-                      </h3>
-                      <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
-                        {enablePassword && password
-                          ? "Watermark dan enkripsi kata sandi telah diterapkan."
-                          : "Cap air visual telah disematkan ke seluruh halaman dokumen."}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
-                    <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
-                      <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
-                        <Download size={16} /> Unduh Berkas Terproteksi
-                      </button>
-                    </a>
-                    <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
-                      <RotateCcw size={15} /> Proses Dokumen Lain
-                    </button>
-                  </div>
+          {isDone && documentId ? (
+            <div className="result-panel animate-fade-in">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div className="stat-icon green" style={{ width: 44, height: 44, borderRadius: "50%" }}>
+                  <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
                 </div>
-              )}
-            </>
+                <div>
+                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                    Dokumen Berhasil Diamankan!
+                  </h3>
+                  <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
+                    {enablePassword && password
+                      ? "Watermark dan enkripsi kata sandi telah diterapkan."
+                      : "Cap air visual telah disematkan ke seluruh halaman dokumen."}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
+                <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
+                  <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
+                    <Download size={16} /> Unduh Berkas Terproteksi
+                  </button>
+                </a>
+                <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
+                  <RotateCcw size={15} /> Proses Dokumen Lain
+                </button>
+              </div>
+            </div>
           ) : (
             /* Live Interactive Canvas Mock Preview */
             <div className="card" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
@@ -495,6 +502,26 @@ export default function WatermarkPage() {
           )}
         </div>
       </div>
+      {/* Processing Modal Overlay */}
+      <ProcessingModal
+        isOpen={isSubmitting || isPolling || Boolean((pollError || submitError) && jobId && !isDone)}
+        title="Sedang Memproses Watermark"
+        subtitle="Mohon tunggu sebentar, sistem sedang menyatukan cap air dan memproteksi dokumen Anda."
+        filename={file?.name}
+        targetFormat={file?.name.split(".").pop()?.toUpperCase() || "PDF"}
+        job={job}
+        isPolling={isPolling}
+        error={pollError || submitError}
+        elapsedSeconds={elapsedSeconds}
+        onRetry={handleProcess}
+        onClose={() => setJobId(null)}
+      />
+
+      <FeatureGuideModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        feature="watermark"
+      />
     </div>
   );
 }

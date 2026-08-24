@@ -27,22 +27,23 @@ export function useJobPolling(
   const [error, setError] = useState<string | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const secondTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onDoneRef = useRef(onDone);
   const onFailedRef = useRef(onFailed);
+  const isHandledRef = useRef(false);
 
   useEffect(() => { onDoneRef.current = onDone; }, [onDone]);
   useEffect(() => { onFailedRef.current = onFailed; }, [onFailed]);
 
   const stop = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
     }
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+    if (secondTimerRef.current) {
+      clearInterval(secondTimerRef.current);
+      secondTimerRef.current = null;
     }
     setIsPolling(false);
   }, []);
@@ -51,22 +52,32 @@ export function useJobPolling(
     if (!jobId) {
       setJob(null);
       setElapsedSeconds(0);
+      isHandledRef.current = false;
+      stop();
       return;
     }
 
+    let isMounted = true;
+    isHandledRef.current = false;
     setIsPolling(true);
     setError(null);
     setElapsedSeconds(0);
 
     const startTime = Date.now();
-    timerRef.current = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+    secondTimerRef.current = setInterval(() => {
+      if (isMounted) {
+        setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+      }
     }, 1000);
 
     const poll = async () => {
+      if (!isMounted || isHandledRef.current) return;
       try {
         const res = await getJobStatus(jobId);
+        if (!isMounted || isHandledRef.current) return;
+
         if (!res.success || !res.data) {
+          isHandledRef.current = true;
           setError(res.error || "Gagal mendapatkan status job");
           stop();
           return;
@@ -75,26 +86,46 @@ export function useJobPolling(
         setJob(res.data);
 
         if (res.data.status === "done") {
+          isHandledRef.current = true;
           stop();
           onDoneRef.current?.(res.data);
           if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-            new Notification("SmartDoc — Selesai!", { body: "Proses dokumen berhasil diselesaikan." });
+            try {
+              new Notification("SmartDoc — Selesai!", { body: "Proses dokumen berhasil diselesaikan." });
+            } catch {
+              // Ignore notification permission error
+            }
           }
-        } else if (res.data.status === "failed") {
+          return;
+        }
+
+        if (res.data.status === "failed") {
+          isHandledRef.current = true;
           stop();
           setError(res.data.error || "Proses gagal");
           onFailedRef.current?.(res.data);
+          return;
+        }
+
+        // Schedule next polling tick sequentially after response is received
+        if (isMounted && !isHandledRef.current) {
+          pollTimeoutRef.current = setTimeout(poll, intervalMs);
         }
       } catch {
-        setError("Gagal terhubung ke server");
-        stop();
+        if (isMounted && !isHandledRef.current) {
+          isHandledRef.current = true;
+          setError("Gagal terhubung ke server");
+          stop();
+        }
       }
     };
 
     poll();
-    intervalRef.current = setInterval(poll, intervalMs);
 
-    return () => stop();
+    return () => {
+      isMounted = false;
+      stop();
+    };
   }, [jobId, intervalMs, stop]);
 
   return { job, isPolling, error, elapsedSeconds, stop };

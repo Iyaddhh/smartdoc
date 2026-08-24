@@ -116,10 +116,21 @@ export async function compressFile(file: File): Promise<ApiResponse<{ job_id: st
 }
 
 // --- Converter ---
-export async function convertFile(file: File, outputFormat: string): Promise<ApiResponse<{ job_id: string; document_id: string; output_format: string; redirect?: boolean; feature?: string }>> {
+export async function convertFile(
+  files: File | File[],
+  outputFormat: string,
+  customTitle?: string
+): Promise<ApiResponse<{ job_id: string; document_id: string; output_format: string; redirect?: boolean; feature?: string }>> {
   const form = new FormData();
-  form.append("file", file);
+  if (Array.isArray(files)) {
+    files.forEach((f) => form.append("files", f));
+  } else {
+    form.append("file", files);
+  }
   form.append("output_format", outputFormat);
+  if (customTitle && customTitle.trim()) {
+    form.append("custom_title", customTitle.trim());
+  }
   return apiFetch("/api/converter/process", { method: "POST", body: form });
 }
 
@@ -211,6 +222,14 @@ export function getDownloadUrl(docId: string, fmt?: "docx" | "pdf"): string {
   return `${API_BASE}/api/documents/${docId}/download${fmt ? `?fmt=${fmt}` : ""}`;
 }
 
+export function getPreviewUrl(docId: string): string {
+  return `${API_BASE}/api/documents/${docId}/preview`;
+}
+
+export async function getDocument(docId: string): Promise<ApiResponse<DocumentItem>> {
+  return apiFetch(`/api/documents/${docId}`);
+}
+
 export async function renameDocument(docId: string, customName: string): Promise<ApiResponse<{ id: string; custom_name: string }>> {
   return apiFetch(`/api/documents/${docId}`, {
     method: "PATCH",
@@ -221,6 +240,27 @@ export async function renameDocument(docId: string, customName: string): Promise
 
 export async function deleteDocument(docId: string): Promise<ApiResponse<null>> {
   return apiFetch(`/api/documents/${docId}`, { method: "DELETE" });
+}
+
+export async function batchDeleteDocuments(docIds: string[]): Promise<ApiResponse<{ deleted_count: number }>> {
+  return apiFetch("/api/documents/batch-delete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: docIds }),
+  });
+}
+
+export async function batchDownloadDocuments(docIds: string[]): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/documents/batch-download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids: docIds }),
+  });
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => null);
+    throw new Error(errorData?.message || "Gagal mengunduh berkas terpilih.");
+  }
+  return res.blob();
 }
 
 // --- Templates ---

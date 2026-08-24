@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import FileUpload from "@/components/FileUpload";
-import JobProgressCard from "@/components/JobProgressCard";
+import ProcessingModal from "@/components/ProcessingModal";
+import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
 import { useJobPolling } from "@/lib/useJobPolling";
 import { compressFile, getDownloadUrl, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
-import { Minimize2, Download, CheckCircle2, AlertCircle, RefreshCw, ArrowRight, Sparkles } from "lucide-react";
+import { Minimize2, Download, CheckCircle2, AlertCircle, RefreshCw, ArrowRight } from "lucide-react";
 
 function formatBytes(bytes: number): string {
   if (!bytes) return "0 B";
@@ -22,14 +23,18 @@ export default function CompressorPage() {
   const [outputSize, setOutputSize] = useState<number | null>(null);
   const [doneJob, setDoneJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isFileLoading, setIsFileLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const { job, isPolling, error: pollError, elapsedSeconds } = useJobPolling(jobId, {
     onDone: (j) => {
       setDoneJob(j);
+      setLoading(false);
       showToast("success", "Dokumen berhasil dikompresi dengan rasio optimal!", "Kompresi Selesai");
     },
     onFailed: (j) => {
+      setLoading(false);
       showToast("error", j.error || "Proses kompresi gagal.", "Kompresi Gagal");
     },
   });
@@ -42,9 +47,9 @@ export default function CompressorPage() {
     setJobId(null);
 
     const res = await compressFile(file);
-    setLoading(false);
 
     if (!res.success || !res.data) {
+      setLoading(false);
       const msg = res.error || "Gagal memulai proses kompresi";
       setErrorMsg(msg);
       showToast("error", msg, "Kendala Kompresi");
@@ -73,148 +78,162 @@ export default function CompressorPage() {
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
       {/* Header */}
-      <div className="page-header">
-        <h2>
-          File <span className="highlight-span">Compressor</span>
-        </h2>
-        <p>Kecilkan ukuran dokumen secara otomatis tanpa mengurangi keterbacaan.</p>
+      <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <h2>
+            File <span className="highlight-span">Compressor</span>
+          </h2>
+          <p>Kecilkan ukuran dokumen secara otomatis tanpa mengurangi keterbacaan.</p>
+        </div>
+        <GuideButton onClick={() => setShowGuide(true)} />
       </div>
 
-      <div className="grid-2" style={{ alignItems: "start" }}>
-        {/* Upload & Action */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <div className="card">
-            <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "14px", color: "var(--color-ink-black)" }}>
-              Pilih Dokumen yang Akan Dikompres
-            </h3>
-            <FileUpload
-              accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png"
-              label="Pilih atau Letakkan File"
-              description="PDF, Word, Excel, PowerPoint, atau Gambar (maks 50 MB)"
-              onFileSelected={(f) => { setFile(f); setJobId(null); setDoneJob(null); setErrorMsg(null); }}
-              disabled={isPolling || loading}
-            />
-          </div>
-
-          {/* Error Alert with Retry */}
-          {errorMsg && (
-            <div className="alert alert-error animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-                <AlertCircle size={16} style={{ flexShrink: 0, marginTop: "2px" }} />
-                <span>{errorMsg}</span>
-              </div>
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={handleProcess}
-                style={{ alignSelf: "flex-start", background: "var(--color-pure-white)" }}
-              >
-                <RefreshCw size={13} /> Coba Lagi
-              </button>
+      {isDone && docId ? (
+        /* Result Panel View (When compression completed - hides other options) */
+        <div
+          className="card result-panel animate-fade-in"
+          style={{
+            maxWidth: "680px",
+            margin: "0 auto",
+            padding: "28px 24px",
+            width: "100%",
+            boxSizing: "border-box",
+            display: "flex",
+            flexDirection: "column",
+            gap: "20px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div
+              style={{
+                width: "42px",
+                height: "42px",
+                borderRadius: "12px",
+                background: "var(--clr-success-bg)",
+                color: "var(--clr-success)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              <CheckCircle2 size={24} />
             </div>
-          )}
-
-          {/* Main Action Button with Loading state */}
-          <button
-            className="btn btn-primary btn-lg"
-            onClick={handleProcess}
-            disabled={!file || loading || isPolling || isDone}
-            style={{ width: "100%" }}
-          >
-            {loading ? (
-              <>
-                <span className="animate-spin">⟳</span> Menyiapkan Kompresi...
-              </>
-            ) : isPolling ? (
-              <>
-                <span className="animate-spin">⟳</span> Mengompresi Dokumen...
-              </>
-            ) : isDone ? (
-              <>
-                <CheckCircle2 size={16} /> Kompresi Selesai
-              </>
-            ) : (
-              <>
-                Kompres Sekarang <ArrowRight size={16} />
-              </>
-            )}
-          </button>
-
-          {/* Progress Card */}
-          <JobProgressCard
-            job={job}
-            isPolling={isPolling}
-            error={pollError}
-            elapsedSeconds={elapsedSeconds}
-            onRetry={handleProcess}
-          />
-        </div>
-
-        {/* Result Column */}
-        <div>
-          {isDone && docId ? (
-            <div className="result-panel animate-fade-in">
-              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
-                <div>
-                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
-                    Kompresi Berhasil Dilakukan
-                  </h3>
-                  <p style={{ fontSize: "12.5px", color: "var(--color-warm-gray)" }}>
-                    Ukuran dokumen berhasil dipadatkan secara signifikan
-                  </p>
-                </div>
-              </div>
-
-              <div className="size-comparison">
-                <div>
-                  <p style={{ fontSize: "11.5px", color: "var(--color-warm-gray)" }}>Ukuran Semula</p>
-                  <p style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink-black)" }}>
-                    {formatBytes(originalSize || file?.size || 0)}
-                  </p>
-                </div>
-                <ArrowRight size={16} className="arrow" />
-                <div>
-                  <p style={{ fontSize: "11.5px", color: "var(--color-warm-gray)" }}>Setelah Kompresi</p>
-                  <p style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink-black)" }}>
-                    {formatBytes(displayOutput)}
-                  </p>
-                </div>
-                <div style={{ marginLeft: "auto" }}>
-                  <span className="badge badge-done" style={{ fontSize: "12px", padding: "4px 10px" }}>
-                    Hemat ~{savingsPct}%
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
-                <a
-                  href={getDownloadUrl(docId)}
-                  download
-                  className="btn btn-primary"
-                >
-                  <Download size={16} /> Unduh Berkas Hasil
-                </a>
-                <button
-                  className="btn btn-secondary"
-                  onClick={resetAll}
-                >
-                  Kompres File Lain
-                </button>
-              </div>
-            </div>
-          ) : isPolling ? (
-            <div className="card animate-fade-in" style={{ textAlign: "center", padding: "40px 24px" }}>
-              <div className="stat-icon green animate-pulse" style={{ width: 52, height: 52, margin: "0 auto 16px", borderRadius: "12px" }}>
-                <Sparkles size={24} />
-              </div>
-              <h4 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", marginBottom: "4px" }}>
-                Sedang Mengoptimasi Dokumen
-              </h4>
-              <p style={{ fontSize: "13px", color: "var(--color-warm-gray)", maxWidth: "320px", margin: "0 auto" }}>
-                Algoritma kompresi sedang memangkas bobot data dan gambar tanpa mengurangi keterbacaan teks.
+            <div>
+              <h3 style={{ fontSize: "17px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                Kompresi Berhasil Dilakukan
+              </h3>
+              <p style={{ fontSize: "13px", color: "var(--color-warm-gray)", marginTop: "2px" }}>
+                Ukuran dokumen berhasil dipadatkan secara signifikan dan siap diunduh.
               </p>
             </div>
-          ) : (
+          </div>
+
+          <div className="size-comparison">
+            <div>
+              <p style={{ fontSize: "11.5px", color: "var(--color-warm-gray)" }}>Ukuran Semula</p>
+              <p style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink-black)" }}>
+                {formatBytes(originalSize || file?.size || 0)}
+              </p>
+            </div>
+            <ArrowRight size={16} className="arrow" />
+            <div>
+              <p style={{ fontSize: "11.5px", color: "var(--color-warm-gray)" }}>Setelah Kompresi</p>
+              <p style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink-black)" }}>
+                {formatBytes(displayOutput)}
+              </p>
+            </div>
+            <div style={{ marginLeft: "auto" }}>
+              <span className="badge badge-done" style={{ fontSize: "12px", padding: "4px 10px" }}>
+                Hemat ~{savingsPct}%
+              </span>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "4px" }}>
+            <a
+              href={getDownloadUrl(docId)}
+              download
+              className="btn btn-primary btn-lg"
+              style={{ flex: "1 1 200px" }}
+            >
+              <Download size={18} /> Unduh Berkas Hasil
+            </a>
+            <button
+              className="btn btn-secondary btn-lg"
+              onClick={resetAll}
+              style={{ flex: "1 1 180px" }}
+            >
+              <RefreshCw size={16} /> Kompres File Lain
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* Form & Setup Grid (Before compression is finished) */
+        <div className="grid-2" style={{ alignItems: "start" }}>
+          {/* Upload & Action */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+            <div className="card">
+              <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "14px", color: "var(--color-ink-black)" }}>
+                Pilih Dokumen yang Akan Dikompres
+              </h3>
+              <FileUpload
+                accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png"
+                label="Pilih atau Letakkan File"
+                description="PDF, Word, Excel, PowerPoint, atau Gambar"
+                onFileSelected={(f) => { setFile(f); setJobId(null); setDoneJob(null); setErrorMsg(null); }}
+                onFileClear={resetAll}
+                onLoadingChange={setIsFileLoading}
+                disabled={isPolling || loading}
+              />
+            </div>
+
+            {/* Error Alert with Retry */}
+            {errorMsg && (
+              <div className="alert alert-error animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                  <AlertCircle size={16} style={{ flexShrink: 0, marginTop: "2px" }} />
+                  <span>{errorMsg}</span>
+                </div>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleProcess}
+                  style={{ alignSelf: "flex-start", background: "var(--color-pure-white)" }}
+                >
+                  <RefreshCw size={13} /> Coba Lagi
+                </button>
+              </div>
+            )}
+
+            {/* Main Action Button with Loading state */}
+            <button
+              className="btn btn-primary btn-lg"
+              onClick={handleProcess}
+              disabled={!file || loading || isPolling || isFileLoading}
+              style={{ width: "100%" }}
+            >
+              {isFileLoading ? (
+                <>
+                  <span className="animate-spin">⟳</span> Menyiapkan Berkas...
+                </>
+              ) : loading ? (
+                <>
+                  <span className="animate-spin">⟳</span> Menyiapkan Kompresi...
+                </>
+              ) : isPolling ? (
+                <>
+                  <span className="animate-spin">⟳</span> Mengompresi Dokumen...
+                </>
+              ) : (
+                <>
+                  Kompres Sekarang <ArrowRight size={16} />
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Info Column */}
+          <div>
             <div className="card" style={{ background: "var(--color-stone-canvas)", borderStyle: "dashed" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
                 <Minimize2 size={18} style={{ color: "var(--color-warm-gray)" }} />
@@ -226,38 +245,30 @@ export default function CompressorPage() {
                 SmartDoc menerapkan algoritma downsampling gambar cerdas dan pembersihan metadata berlebih tanpa merusak keterbacaan teks dan layout dokumen.
               </p>
             </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Format Info Grid */}
-      <div className="card">
-        <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "14px", color: "var(--color-ink-black)" }}>
-          Efisiensi Kompresi Berdasarkan Tipe File
-        </h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "12px" }}>
-          {[
-            { fmt: "PDF Dokumen", note: "Hingga 50–80% lebih ringkas" },
-            { fmt: "Gambar JPG/JPEG", note: "Optimasi web 30–60%" },
-            { fmt: "Gambar PNG", note: "Reduksi palet 40–70%" },
-            { fmt: "Dokumen Word", note: "Optimasi media tersemat" },
-            { fmt: "Presentasi PPTX", note: "Kompresi aset slide" },
-          ].map(({ fmt, note }) => (
-            <div
-              key={fmt}
-              style={{
-                padding: "12px 14px",
-                borderRadius: "var(--radius-inputs)",
-                border: "1px solid var(--color-stone-border)",
-                background: "var(--color-stone-canvas)",
-              }}
-            >
-              <p style={{ fontWeight: 600, fontSize: "13.5px", color: "var(--color-ink-black)" }}>{fmt}</p>
-              <p style={{ fontSize: "12px", color: "var(--color-warm-gray)", marginTop: "2px" }}>{note}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* Processing Modal Overlay */}
+      <ProcessingModal
+        isOpen={loading || isPolling || Boolean(pollError && jobId)}
+        title="Sedang Mengompresi Dokumen"
+        subtitle="Mohon tunggu sebentar, algoritma sedang memadatkan ukuran dokumen Anda."
+        filename={file?.name}
+        targetFormat={file?.name.split(".").pop()?.toUpperCase()}
+        job={job}
+        isPolling={isPolling}
+        error={pollError}
+        elapsedSeconds={elapsedSeconds}
+        onRetry={handleProcess}
+        onClose={() => setJobId(null)}
+      />
+
+      <FeatureGuideModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        feature="compressor"
+      />
     </div>
   );
 }

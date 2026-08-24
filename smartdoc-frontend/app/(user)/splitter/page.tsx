@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from "react";
 import FileUpload from "@/components/FileUpload";
-import JobProgressCard from "@/components/JobProgressCard";
+import ProcessingModal from "@/components/ProcessingModal";
+import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
 import { useJobPolling } from "@/lib/useJobPolling";
 import { splitDocument, getSplitDocumentInfo, getDownloadUrl, DocumentInfo, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
@@ -88,17 +89,21 @@ export default function SplitterPage() {
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [doneJob, setDoneJob] = useState<JobStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isFileLoading, setIsFileLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Modal zoom for inspecting a page thumbnail
   const [zoomPage, setZoomPage] = useState<{ index: number; src: string } | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const { job, isPolling, error: pollError, elapsedSeconds } = useJobPolling(jobId, {
     onDone: (j) => {
       setDoneJob(j);
+      setIsSubmitting(false);
       showToast("success", "Pemisahan dokumen berhasil selesai!", "Sukses");
     },
     onFailed: (j) => {
+      setIsSubmitting(false);
       showToast("error", j.error || "Proses pemisahan dokumen gagal.", "Gagal Memisahkan");
     },
   });
@@ -131,8 +136,8 @@ export default function SplitterPage() {
       } else {
         setRangeExpression("1");
       }
-      showToast("success", `${res.data.total_pages} halaman berhasil dimuat untuk pratinjau.`, "Dokumen Siap");
     } else {
+      setSubmitError(res.error || "Gagal membaca struktur halaman dokumen.");
       showToast("warning", "Tidak dapat membuat pratinjau thumbnail halaman otomatis.", "Info Dokumen");
     }
   };
@@ -185,9 +190,8 @@ export default function SplitterPage() {
       outputFormat: splitMode === "extract_range" ? outputFormat : undefined,
     });
 
-    setIsSubmitting(false);
-
     if (!res.success || !res.data) {
+      setIsSubmitting(false);
       const err = res.error || "Gagal memulai proses pemisahan dokumen";
       setSubmitError(err);
       showToast("error", err, "Gagal Memproses");
@@ -196,7 +200,6 @@ export default function SplitterPage() {
 
     setJobId(res.data.job_id);
     setDocumentId(res.data.document_id);
-    showToast("info", "Proses pemisahan dokumen sedang dikerjakan...", "Diproses");
   };
 
   const handleReset = () => {
@@ -213,11 +216,14 @@ export default function SplitterPage() {
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
       {/* Header */}
-      <div className="page-header">
-        <h2>
-          Document <span className="highlight-span">Splitter</span>
-        </h2>
-        <p>Pisahkan, potong, atau ekstrak halaman dokumen dengan pratinjau visual interaktif.</p>
+      <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <h2>
+            Document <span className="highlight-span">Splitter</span>
+          </h2>
+          <p>Pisahkan, potong, atau ekstrak halaman dokumen dengan pratinjau visual interaktif.</p>
+        </div>
+        <GuideButton onClick={() => setShowGuide(true)} />
       </div>
 
       {/* Main Grid: Left Configuration & Right Document Preview */}
@@ -243,6 +249,8 @@ export default function SplitterPage() {
               accept=".pdf,.docx"
               maxSizeMB={50}
               onFileSelected={handleFileSelect}
+              onFileClear={handleReset}
+              onLoadingChange={setIsFileLoading}
               disabled={isSubmitting || !!jobId}
             />
 
@@ -255,22 +263,29 @@ export default function SplitterPage() {
 
           {/* Step 2: Split Mode Options */}
           {file && (
-            <div className="card animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
-                2. Metode Pemisahan
-              </h3>
+            <div className="card animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px", opacity: isFileLoading ? 0.6 : 1 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                  2. Metode Pemisahan
+                </h3>
+                {isFileLoading && (
+                  <span style={{ fontSize: "11.5px", color: "var(--color-cyan-edge)", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span className="animate-spin">⟳</span> Menyiapkan...
+                  </span>
+                )}
+              </div>
 
               {/* Mode Selector Cards */}
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {/* Mode 1: Extract Range */}
                 <div
-                  onClick={() => !jobId && setSplitMode("extract_range")}
+                  onClick={() => !jobId && !isFileLoading && setSplitMode("extract_range")}
                   style={{
                     padding: "14px",
                     borderRadius: "var(--radius-inputs)",
                     border: `1px solid ${splitMode === "extract_range" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
                     background: splitMode === "extract_range" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
-                    cursor: jobId ? "default" : "pointer",
+                    cursor: (jobId || isFileLoading) ? "default" : "pointer",
                     transition: "var(--transition-fast)",
                   }}
                 >
@@ -280,7 +295,7 @@ export default function SplitterPage() {
                       name="splitMode"
                       checked={splitMode === "extract_range"}
                       onChange={() => setSplitMode("extract_range")}
-                      disabled={!!jobId}
+                      disabled={!!jobId || isFileLoading}
                     />
                     <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink-black)" }}>
                       Ekstrak Halaman Pilihan
@@ -301,7 +316,7 @@ export default function SplitterPage() {
                           placeholder="cth: 1-3, 5, 8-10"
                           value={rangeExpression}
                           onChange={(e) => setRangeExpression(e.target.value)}
-                          disabled={!!jobId}
+                          disabled={!!jobId || isFileLoading}
                           style={{ fontSize: "13px", height: "36px" }}
                         />
                         <span style={{ fontSize: "11px", color: "var(--color-ash-gray)", marginTop: "2px", display: "block" }}>
@@ -321,7 +336,7 @@ export default function SplitterPage() {
                             type="button"
                             className={`btn btn-sm ${outputFormat === "pdf" ? "btn-primary" : "btn-secondary"}`}
                             onClick={() => setOutputFormat("pdf")}
-                            disabled={!!jobId}
+                            disabled={!!jobId || isFileLoading}
                           >
                             PDF
                           </button>
@@ -329,7 +344,7 @@ export default function SplitterPage() {
                             type="button"
                             className={`btn btn-sm ${outputFormat === "docx" ? "btn-primary" : "btn-secondary"}`}
                             onClick={() => setOutputFormat("docx")}
-                            disabled={!!jobId}
+                            disabled={!!jobId || isFileLoading}
                           >
                             Word (.docx)
                           </button>
@@ -341,13 +356,13 @@ export default function SplitterPage() {
 
                 {/* Mode 2: Fixed Interval Chunks */}
                 <div
-                  onClick={() => !jobId && setSplitMode("fixed_interval")}
+                  onClick={() => !jobId && !isFileLoading && setSplitMode("fixed_interval")}
                   style={{
                     padding: "14px",
                     borderRadius: "var(--radius-inputs)",
                     border: `1px solid ${splitMode === "fixed_interval" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
                     background: splitMode === "fixed_interval" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
-                    cursor: jobId ? "default" : "pointer",
+                    cursor: (jobId || isFileLoading) ? "default" : "pointer",
                     transition: "var(--transition-fast)",
                   }}
                 >
@@ -357,7 +372,7 @@ export default function SplitterPage() {
                       name="splitMode"
                       checked={splitMode === "fixed_interval"}
                       onChange={() => setSplitMode("fixed_interval")}
-                      disabled={!!jobId}
+                      disabled={!!jobId || isFileLoading}
                     />
                     <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink-black)" }}>
                       Pecah per Rentang Tetap
@@ -377,7 +392,7 @@ export default function SplitterPage() {
                         max={docInfo?.total_pages || 100}
                         value={chunkSize}
                         onChange={(e) => setChunkSize(Math.max(1, parseInt(e.target.value) || 1))}
-                        disabled={!!jobId}
+                        disabled={!!jobId || isFileLoading}
                         style={{ width: "70px", height: "34px", textAlign: "center", padding: "4px" }}
                       />
                       <span style={{ fontSize: "13px", color: "var(--color-ink-black)" }}>halaman</span>
@@ -392,13 +407,13 @@ export default function SplitterPage() {
 
                 {/* Mode 3: All Single Pages */}
                 <div
-                  onClick={() => !jobId && setSplitMode("all_single")}
+                  onClick={() => !jobId && !isFileLoading && setSplitMode("all_single")}
                   style={{
                     padding: "14px",
                     borderRadius: "var(--radius-inputs)",
                     border: `1px solid ${splitMode === "all_single" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
                     background: splitMode === "all_single" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
-                    cursor: jobId ? "default" : "pointer",
+                    cursor: (jobId || isFileLoading) ? "default" : "pointer",
                     transition: "var(--transition-fast)",
                   }}
                 >
@@ -408,7 +423,7 @@ export default function SplitterPage() {
                       name="splitMode"
                       checked={splitMode === "all_single"}
                       onChange={() => setSplitMode("all_single")}
-                      disabled={!!jobId}
+                      disabled={!!jobId || isFileLoading}
                     />
                     <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink-black)" }}>
                       Pecah Semua Halaman Tunggal
@@ -432,10 +447,14 @@ export default function SplitterPage() {
                 <button
                   className="btn btn-primary btn-lg"
                   onClick={handleProcess}
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isFileLoading}
                   style={{ width: "100%", marginTop: "4px" }}
                 >
-                  {isSubmitting ? (
+                  {isFileLoading ? (
+                    <>
+                      <span className="animate-spin">⟳</span> Menyiapkan Berkas...
+                    </>
+                  ) : isSubmitting ? (
                     <>
                       <span className="animate-spin">⟳</span> Menyiapkan Pemisahan...
                     </>
@@ -449,48 +468,36 @@ export default function SplitterPage() {
             </div>
           )}
 
-          {/* Progress & Result Box on Left Column */}
-          {jobId && (
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-              <JobProgressCard
-                job={job}
-                isPolling={isPolling}
-                error={pollError || submitError}
-                elapsedSeconds={elapsedSeconds}
-                onRetry={handleProcess}
-              />
-
-              {isDone && documentId && (
-                <div className="result-panel animate-fade-in">
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div className="stat-icon green" style={{ width: 44, height: 44, borderRadius: "50%" }}>
-                      <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
-                    </div>
-                    <div>
-                      <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
-                        Pemisahan Selesai!
-                      </h3>
-                      <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
-                        {splitMode === "extract_range"
-                          ? `Halaman berhasil diekstrak ke format ${outputFormat.toUpperCase()}`
-                          : "Seluruh potongan berkas telah dikemas ke dalam arsip ZIP"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
-                    <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
-                      <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
-                        {splitMode === "extract_range" ? <Download size={16} /> : <Archive size={16} />}
-                        {splitMode === "extract_range" ? "Unduh Hasil Ekstrak" : "Unduh Paket ZIP"}
-                      </button>
-                    </a>
-                    <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
-                      <RotateCcw size={15} /> Pisahkan Berkas Lain
-                    </button>
-                  </div>
+          {/* Result Box on Left Column */}
+          {isDone && documentId && (
+            <div className="result-panel animate-fade-in">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div className="stat-icon green" style={{ width: 44, height: 44, borderRadius: "50%" }}>
+                  <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
                 </div>
-              )}
+                <div>
+                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                    Pemisahan Selesai!
+                  </h3>
+                  <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
+                    {splitMode === "extract_range"
+                      ? `Halaman berhasil diekstrak ke format ${outputFormat.toUpperCase()}`
+                      : "Seluruh potongan berkas telah dikemas ke dalam arsip ZIP"}
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
+                <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
+                  <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
+                    {splitMode === "extract_range" ? <Download size={16} /> : <Archive size={16} />}
+                    {splitMode === "extract_range" ? "Unduh Hasil Ekstrak" : "Unduh Paket ZIP"}
+                  </button>
+                </a>
+                <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
+                  <RotateCcw size={15} /> Pisahkan Berkas Lain
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -504,12 +511,17 @@ export default function SplitterPage() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-stone-border)", paddingBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Eye size={17} style={{ color: "var(--color-cyan-edge)" }} />
-                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
                   Pratinjau Halaman Dokumen
                 </h3>
+                {(fetchingInfo || isFileLoading) && (
+                  <span className="badge badge-pending animate-fade-in" style={{ fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                    <span className="animate-spin">⟳</span> Menyiapkan Halaman...
+                  </span>
+                )}
               </div>
 
-              {docInfo && docInfo.total_pages > 0 && splitMode === "extract_range" && (
+              {docInfo && docInfo.total_pages > 0 && !fetchingInfo && !isFileLoading && splitMode === "extract_range" && (
                 <div style={{ display: "flex", gap: "6px" }}>
                   <button className="btn btn-secondary btn-sm" onClick={selectAllPages} disabled={!!jobId}>
                     Pilih Semua
@@ -558,16 +570,34 @@ export default function SplitterPage() {
                   Unggah berkas PDF atau Word (.docx) pada panel kiri untuk melihat pratinjau halaman visual di sini.
                 </p>
               </div>
-            ) : fetchingInfo ? (
-              /* Shimmer Loading Previews */
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "12px", padding: "8px 0" }}>
-                {[...Array(6)].map((_, i) => (
-                  <div
-                    key={i}
-                    className="skeleton"
-                    style={{ height: 180, borderRadius: "var(--radius-cards)" }}
-                  />
-                ))}
+            ) : (fetchingInfo || isFileLoading) ? (
+              /* Shimmer Loading Previews Synchronized with Upload */
+              <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "8px 0" }}>
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: "8px",
+                    background: "var(--color-sky-wash)",
+                    border: "1px solid rgba(8, 145, 178, 0.2)",
+                    fontSize: "12.5px",
+                    color: "var(--color-cyan-edge)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                  }}
+                >
+                  <span className="animate-spin">⟳</span>
+                  <span>Sedang membaca berkas dan merender pratinjau visual halaman...</span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "12px" }}>
+                  {[...Array(6)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="skeleton"
+                      style={{ height: 180, borderRadius: "var(--radius-cards)" }}
+                    />
+                  ))}
+                </div>
               </div>
             ) : docInfo && docInfo.thumbnails && docInfo.thumbnails.length > 0 ? (
               /* Rendered Page Thumbnail Grid */
@@ -760,6 +790,26 @@ export default function SplitterPage() {
           </div>
         </div>
       )}
+      {/* Processing Modal Overlay */}
+      <ProcessingModal
+        isOpen={isSubmitting || isPolling || Boolean((pollError || submitError) && jobId && !isDone)}
+        title="Sedang Memisahkan Dokumen"
+        subtitle="Mohon tunggu sebentar, sistem sedang memproses pemotongan halaman dokumen Anda."
+        filename={file?.name}
+        targetFormat={outputFormat.toUpperCase()}
+        job={job}
+        isPolling={isPolling}
+        error={pollError || submitError}
+        elapsedSeconds={elapsedSeconds}
+        onRetry={handleProcess}
+        onClose={() => setJobId(null)}
+      />
+
+      <FeatureGuideModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        feature="splitter"
+      />
     </div>
   );
 }

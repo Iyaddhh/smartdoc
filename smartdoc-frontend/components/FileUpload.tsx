@@ -21,8 +21,12 @@ interface FileUploadProps {
   label?: string;
   description?: string;
   maxSizeMB?: number;
-  onFileSelected: (file: File) => void;
+  onFileSelected?: (file: File) => void;
+  onFilesSelected?: (files: File[]) => void;
+  onFileClear?: () => void;
+  onLoadingChange?: (loading: boolean) => void;
   disabled?: boolean;
+  multiple?: boolean;
 }
 
 function formatBytes(bytes: number): string {
@@ -38,7 +42,11 @@ export default function FileUpload({
   description = "Seret & lepas berkas ke sini atau klik untuk memilih",
   maxSizeMB = 50,
   onFileSelected,
+  onFilesSelected,
+  onFileClear,
+  onLoadingChange,
   disabled = false,
+  multiple = false,
 }: FileUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -46,6 +54,7 @@ export default function FileUpload({
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState<number>(1);
   const [loadingThumbnail, setLoadingThumbnail] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -81,24 +90,69 @@ export default function FileUpload({
     };
   }, [isZoomed]);
 
-  const validateFile = (file: File): boolean => {
-    const maxBytes = maxSizeMB * 1024 * 1024;
-    if (file.size > maxBytes) {
-      setValidationError(`Ukuran file melebihi batas maksimum ${maxSizeMB} MB (${formatBytes(file.size)}).`);
-      return false;
-    }
+  const MAX_DOC_MB = 35;
+  const MAX_IMAGE_MB = 12;
+  const MAX_IMAGE_DIM_PX = 6000;
 
-    if (accept) {
-      const allowedExts = accept.split(",").map((ext) => ext.trim().toLowerCase());
-      const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
-      if (!allowedExts.includes(fileExt)) {
-        setValidationError(`Format file "${fileExt}" tidak didukung. Format yang diterima: ${accept}`);
-        return false;
+  const getMaxMbForFile = (filename: string): number => {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    if (["jpg", "jpeg", "png"].includes(ext)) {
+      return Math.min(maxSizeMB, MAX_IMAGE_MB);
+    }
+    if (["pdf", "docx", "xlsx", "pptx"].includes(ext)) {
+      return Math.min(maxSizeMB, MAX_DOC_MB);
+    }
+    return maxSizeMB;
+  };
+
+  const validateFile = (file: File): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const allowedMb = getMaxMbForFile(file.name);
+      const maxBytes = allowedMb * 1024 * 1024;
+      if (file.size > maxBytes) {
+        setValidationError(
+          `Ukuran berkas (${formatBytes(file.size)}) melebihi batas maksimal ${allowedMb} MB.`
+        );
+        return resolve(false);
       }
-    }
 
-    setValidationError(null);
-    return true;
+      if (accept) {
+        const allowedExts = accept.split(",").map((ext) => ext.trim().toLowerCase());
+        const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
+        if (!allowedExts.includes(fileExt)) {
+          setValidationError(`Format file "${fileExt}" tidak didukung. Format yang diterima: ${accept}`);
+          return resolve(false);
+        }
+      }
+
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      if (["jpg", "jpeg", "png"].includes(ext)) {
+        const img = new Image();
+        const objUrl = URL.createObjectURL(file);
+        img.onload = () => {
+          URL.revokeObjectURL(objUrl);
+          if (img.width > MAX_IMAGE_DIM_PX || img.height > MAX_IMAGE_DIM_PX) {
+            setValidationError(
+              `Dimensi gambar (${img.width}x${img.height}px) melebihi batas maksimum ${MAX_IMAGE_DIM_PX}px.`
+            );
+            resolve(false);
+          } else {
+            setValidationError(null);
+            resolve(true);
+          }
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objUrl);
+          setValidationError("Berkas gambar tidak dapat dibaca atau corrupt.");
+          resolve(false);
+        };
+        img.src = objUrl;
+        return;
+      }
+
+      setValidationError(null);
+      resolve(true);
+    });
   };
 
   const loadThumbnail = async (file: File) => {
@@ -113,7 +167,7 @@ export default function FileUpload({
     }
 
     // 2. Direct object URL for local image formats
-    if (["jpg", "jpeg", "png", "webp", "gif"].includes(ext)) {
+    if (["jpg", "jpeg", "png", "gif"].includes(ext)) {
       const objUrl = URL.createObjectURL(file);
       setThumbnailUrl(objUrl);
       setAllThumbnails([objUrl]);
@@ -144,31 +198,60 @@ export default function FileUpload({
     }
   };
 
-  const handleFile = (file: File) => {
-    if (validateFile(file)) {
-      setSelectedFile(file);
-      onFileSelected(file);
-      loadThumbnail(file);
-    } else {
-      setSelectedFile(null);
-      setThumbnailUrl(null);
-      setAllThumbnails([]);
-      setPdfBlobUrl(null);
-      if (inputRef.current) inputRef.current.value = "";
+  const handleFile = async (file: File) => {
+    setIsValidating(true);
+    onLoadingChange?.(true);
+    setValidationError(null);
+
+    try {
+      const isValid = await validateFile(file);
+      if (isValid) {
+        setSelectedFile(file);
+        onFileSelected?.(file);
+        await loadThumbnail(file);
+      } else {
+        setSelectedFile(null);
+        setThumbnailUrl(null);
+        setAllThumbnails([]);
+        setPdfBlobUrl(null);
+        if (inputRef.current) inputRef.current.value = "";
+        onFileClear?.();
+      }
+    } finally {
+      setIsValidating(false);
+      onLoadingChange?.(false);
     }
   };
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
-    if (disabled) return;
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (disabled || isValidating) return;
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length > 1 && onFilesSelected) {
+      onFilesSelected(droppedFiles);
+    } else if (droppedFiles.length > 0) {
+      if (onFilesSelected && !onFileSelected) {
+        onFilesSelected(droppedFiles);
+      } else {
+        handleFile(droppedFiles[0]);
+      }
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
+    const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
+    if (selectedFiles.length > 1 && onFilesSelected) {
+      onFilesSelected(selectedFiles);
+      if (inputRef.current) inputRef.current.value = "";
+    } else if (selectedFiles.length === 1) {
+      if (onFilesSelected && !onFileSelected) {
+        onFilesSelected(selectedFiles);
+        if (inputRef.current) inputRef.current.value = "";
+      } else {
+        handleFile(selectedFiles[0]);
+      }
+    }
   };
 
   const clearFile = (e: React.MouseEvent) => {
@@ -179,6 +262,8 @@ export default function FileUpload({
     setPdfBlobUrl(null);
     setValidationError(null);
     if (inputRef.current) inputRef.current.value = "";
+    onLoadingChange?.(false);
+    onFileClear?.();
   };
 
   const handleOpenModal = () => {
@@ -208,7 +293,46 @@ export default function FileUpload({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-      {selectedFile ? (
+      {isValidating ? (
+        <div
+          className="card animate-fade-in"
+          style={{
+            padding: "24px 20px",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "10px",
+            background: "var(--color-stone-canvas)",
+            border: "1px dashed var(--color-cyan-edge)",
+            borderRadius: "var(--radius-cards)",
+            textAlign: "center",
+          }}
+        >
+          <div
+            style={{
+              width: "40px",
+              height: "40px",
+              borderRadius: "50%",
+              background: "var(--color-sky-wash)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "var(--color-cyan-edge)",
+            }}
+          >
+            <span className="animate-spin" style={{ fontSize: "18px" }}>⟳</span>
+          </div>
+          <div>
+            <p style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+              Memeriksa & Menyiapkan Dokumen...
+            </p>
+            <p style={{ fontSize: "12px", color: "var(--color-warm-gray)", marginTop: "2px", margin: 0 }}>
+              Memvalidasi struktur berkas dan memuat konfigurasi
+            </p>
+          </div>
+        </div>
+      ) : selectedFile ? (
         <div
           className="card animate-fade-in"
           style={{
@@ -249,7 +373,8 @@ export default function FileUpload({
                   style={{
                     width: "100%",
                     height: "100%",
-                    objectFit: "cover",
+                    objectFit: "contain",
+                    padding: "2px",
                   }}
                 />
                 {/* Hal 1 Badge */}
@@ -408,6 +533,7 @@ export default function FileUpload({
         ref={inputRef}
         type="file"
         accept={accept}
+        multiple={multiple}
         onChange={handleChange}
         style={{ display: "none" }}
         disabled={disabled}

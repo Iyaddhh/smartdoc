@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { listDocuments, deleteDocument, renameDocument, getDownloadUrl, DocumentItem } from "@/lib/api";
+import {
+  listDocuments,
+  deleteDocument,
+  renameDocument,
+  batchDeleteDocuments,
+  batchDownloadDocuments,
+  getDownloadUrl,
+  DocumentItem,
+} from "@/lib/api";
 import { showToast } from "@/components/Toast";
 import EmptyState from "@/components/EmptyState";
 import {
@@ -23,6 +31,7 @@ import {
   AlertCircle,
   Layers,
   TrendingDown,
+  CheckSquare,
 } from "lucide-react";
 
 type ActiveTab = "" | "converter" | "compressor" | "splitter" | "merger" | "watermark" | "ocr";
@@ -75,6 +84,11 @@ export default function RiwayatDokumenPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
+  // Multi-select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+  const [isBatchDownloading, setIsBatchDownloading] = useState(false);
+
   const fetchDocs = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
@@ -126,6 +140,7 @@ export default function RiwayatDokumenPage() {
     setActiveTab(tab);
     setPage(1);
     setSearchQuery("");
+    setSelectedIds(new Set());
   };
 
   const handleRenameStart = (doc: DocumentItem) => {
@@ -157,10 +172,93 @@ export default function RiwayatDokumenPage() {
     setDeletingId(null);
     if (res.success) {
       setDocs((prev) => prev.filter((d) => d.id !== docId));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(docId);
+        return next;
+      });
       fetchDocs();
       showToast("success", `Dokumen "${name}" berhasil dihapus.`, "Dokumen Dihapus");
     } else {
       showToast("error", res.error || "Gagal menghapus dokumen.", "Gagal Menghapus");
+    }
+  };
+
+  // Multi-Select Handlers
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const isAllSelected =
+    filteredDocs.length > 0 && filteredDocs.every((d) => selectedIds.has(d.id));
+  const isSomeSelected =
+    filteredDocs.some((d) => selectedIds.has(d.id)) && !isAllSelected;
+
+  const toggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedIds(new Set());
+    } else {
+      const allIds = new Set(filteredDocs.map((d) => d.id));
+      setSelectedIds(allIds);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    if (!confirm(`Hapus ${count} dokumen terpilih dari riwayat dan penyimpanan secara permanen?`)) {
+      return;
+    }
+
+    setIsBatchDeleting(true);
+    const idArray = Array.from(selectedIds);
+    const res = await batchDeleteDocuments(idArray);
+    setIsBatchDeleting(false);
+
+    if (res.success) {
+      setDocs((prev) => prev.filter((d) => !selectedIds.has(d.id)));
+      setSelectedIds(new Set());
+      fetchDocs();
+      showToast(
+        "success",
+        `${res.data?.deleted_count || count} dokumen terpilih berhasil dihapus.`,
+        "Penghapusan Massal Sukses"
+      );
+    } else {
+      showToast("error", res.error || "Gagal menghapus dokumen terpilih.", "Gagal Menghapus");
+    }
+  };
+
+  const handleBatchDownload = async () => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+
+    setIsBatchDownloading(true);
+    try {
+      const idArray = Array.from(selectedIds);
+      const blob = await batchDownloadDocuments(idArray);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `smartdoc_batch_${new Date().toISOString().slice(0, 10)}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      showToast("success", `${count} dokumen berhasil dikemas dan diunduh.`, "Unduhan Selesai");
+    } catch (err: any) {
+      showToast("error", err.message || "Gagal mengunduh kumpulan dokumen.", "Kendala Unduhan");
+    } finally {
+      setIsBatchDownloading(false);
     }
   };
 
@@ -175,16 +273,138 @@ export default function RiwayatDokumenPage() {
           <p>Daftar lengkap seluruh berkas hasil konversi, kompresi, pemisahan, penggabungan, watermark, dan digitalisasi OCR.</p>
         </div>
 
-        <button
-          className="btn btn-secondary btn-sm"
-          onClick={fetchDocs}
-          disabled={loading}
-          style={{ display: "flex", alignItems: "center", gap: "6px" }}
-        >
-          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-          Perbarui Data
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <button
+            className="btn btn-secondary btn-sm"
+            onClick={fetchDocs}
+            disabled={loading}
+            style={{ display: "flex", alignItems: "center", gap: "6px" }}
+          >
+            <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+            Perbarui Data
+          </button>
+        </div>
       </div>
+
+      {/* Floating Sticky Batch Action Toolbar (When 1+ items selected) */}
+      {selectedIds.size > 0 && (
+        <div
+          className="animate-fade-in"
+          style={{
+            position: "sticky",
+            top: "16px",
+            zIndex: 30,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "12px",
+            padding: "12px 18px",
+            borderRadius: "var(--radius-cards)",
+            background: "var(--color-ink-black)",
+            color: "var(--color-pure-white)",
+            boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.2)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div
+              style={{
+                width: "24px",
+                height: "24px",
+                borderRadius: "50%",
+                background: "var(--color-cyan-edge)",
+                color: "var(--color-pure-white)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "12px",
+                fontWeight: 700,
+              }}
+            >
+              {selectedIds.size}
+            </div>
+            <span style={{ fontSize: "13.5px", fontWeight: 500 }}>
+              <strong>{selectedIds.size}</strong> berkas dokumen dipilih
+            </span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={toggleSelectAll}
+              style={{
+                background: "rgba(255, 255, 255, 0.12)",
+                color: "#ffffff",
+                borderColor: "rgba(255, 255, 255, 0.2)",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              {isAllSelected ? (
+                <>
+                  <X size={13} /> Batal Pilih Semua
+                </>
+              ) : (
+                <>
+                  <CheckSquare size={13} /> Pilih Semua ({filteredDocs.length})
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleBatchDownload}
+              disabled={isBatchDownloading}
+              style={{
+                background: "var(--color-cyan-edge)",
+                borderColor: "var(--color-cyan-edge)",
+                color: "#ffffff",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              {isBatchDownloading ? (
+                <>
+                  <span className="animate-spin">⟳</span> Mengemas ZIP...
+                </>
+              ) : (
+                <>
+                  <Download size={14} /> Unduh Terpilih ({selectedIds.size})
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={handleBatchDelete}
+              disabled={isBatchDeleting}
+              style={{
+                background: "#dc2626",
+                borderColor: "#dc2626",
+                color: "#ffffff",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+            >
+              {isBatchDeleting ? (
+                <>
+                  <span className="animate-spin">⟳</span> Menghapus...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={14} /> Hapus Terpilih ({selectedIds.size})
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filter Tabs & Search Controls */}
       <div
@@ -526,6 +746,20 @@ export default function RiwayatDokumenPage() {
           <table>
             <thead>
               <tr>
+                <th style={{ width: "42px", textAlign: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={isAllSelected}
+                    ref={(input) => {
+                      if (input) {
+                        input.indeterminate = isSomeSelected;
+                      }
+                    }}
+                    onChange={toggleSelectAll}
+                    style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "var(--color-cyan-edge)" }}
+                    title={isAllSelected ? "Batal pilih semua" : "Pilih semua dokumen pada halaman ini"}
+                  />
+                </th>
                 <th>Nama Dokumen</th>
                 {activeTab === "" && <th>Kategori</th>}
                 {activeTab === "converter" && <th>Format Output</th>}
@@ -541,6 +775,7 @@ export default function RiwayatDokumenPage() {
             </thead>
             <tbody>
               {filteredDocs.map((doc) => {
+                const isSelected = selectedIds.has(doc.id);
                 const displayName = doc.custom_name || doc.original_file || "—";
                 const isCompressor = doc.feature === "compressor";
                 const isConverter = doc.feature === "converter";
@@ -555,7 +790,23 @@ export default function RiwayatDokumenPage() {
                     : null;
 
                 return (
-                  <tr key={doc.id}>
+                  <tr
+                    key={doc.id}
+                    style={{
+                      background: isSelected ? "rgba(6, 182, 212, 0.07)" : undefined,
+                      transition: "background 0.15s ease",
+                    }}
+                  >
+                    {/* Checkbox Column */}
+                    <td style={{ textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(doc.id)}
+                        style={{ cursor: "pointer", width: "16px", height: "16px", accentColor: "var(--color-cyan-edge)" }}
+                      />
+                    </td>
+
                     {/* File Name */}
                     <td style={{ maxWidth: "260px" }}>
                       {renaming === doc.id ? (

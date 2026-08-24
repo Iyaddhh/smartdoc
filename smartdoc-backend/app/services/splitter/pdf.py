@@ -1,9 +1,11 @@
 import os
+import shutil
 import zipfile
-from typing import List, Tuple
+from typing import List
 from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 from app.core.logger import logger
+
 
 def parse_page_ranges(range_str: str, max_pages: int) -> List[int]:
     """
@@ -72,17 +74,19 @@ def extract_pages_to_pdf(input_pdf: str, page_indices: List[int], output_pdf: st
 def split_pdf_by_chunks(input_pdf: str, chunk_size: int, output_zip_path: str, base_filename: str) -> bool:
     """
     Splits a PDF into chunks of `chunk_size` pages each and packs them into a ZIP file.
+    Guaranteed cleanup via try/finally.
     """
+    temp_dir = os.path.join(os.path.dirname(output_zip_path), f"temp_split_{Path(output_zip_path).stem}")
+    split_files = []
+
     try:
         reader = PdfReader(input_pdf)
         total_pages = len(reader.pages)
         if total_pages == 0 or chunk_size <= 0:
             return False
 
-        temp_dir = os.path.join(os.path.dirname(output_zip_path), f"temp_split_{Path(output_zip_path).stem}")
         os.makedirs(temp_dir, exist_ok=True)
 
-        split_files = []
         part_num = 1
         for start_idx in range(0, total_pages, chunk_size):
             end_idx = min(start_idx + chunk_size, total_pages)
@@ -104,26 +108,22 @@ def split_pdf_by_chunks(input_pdf: str, chunk_size: int, output_zip_path: str, b
             for filepath, arcname in split_files:
                 zipf.write(filepath, arcname)
 
-        # Cleanup temp individual files
-        for filepath, _ in split_files:
-            try:
-                os.remove(filepath)
-            except Exception:
-                pass
-        try:
-            os.rmdir(temp_dir)
-        except Exception:
-            pass
-
         logger.info(f"Split PDF into {len(split_files)} parts and zipped to {output_zip_path}")
         return True
     except Exception as e:
-        logger.error(f"Error splitting PDF {input_pdf} by chunks: {e}")
+        logger.error(f"Error splitting PDF by chunks for {input_pdf}: {e}")
         return False
+    finally:
+        # Guarantee cleanup of temporary chunks directory
+        if os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+            except Exception as clean_err:
+                logger.warning(f"Error cleaning temp split dir {temp_dir}: {clean_err}")
 
 
 def split_all_single_pages(input_pdf: str, output_zip_path: str, base_filename: str) -> bool:
     """
-    Splits every single page into an individual PDF file and packs them into a ZIP archive.
+    Memecah seluruh halaman menjadi file individual (1 halaman per file) dan membungkusnya dalam ZIP.
     """
     return split_pdf_by_chunks(input_pdf, chunk_size=1, output_zip_path=output_zip_path, base_filename=base_filename)

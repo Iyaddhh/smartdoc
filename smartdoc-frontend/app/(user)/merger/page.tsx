@@ -3,7 +3,8 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import FileUpload from "@/components/FileUpload";
-import JobProgressCard from "@/components/JobProgressCard";
+import ProcessingModal from "@/components/ProcessingModal";
+import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
 import { useJobPolling } from "@/lib/useJobPolling";
 import { mergeDocuments, getMergerDocInfo, getDownloadUrl, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
@@ -68,6 +69,7 @@ export default function MergerPage() {
   const [doneJob, setDoneJob] = useState<JobStatus | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showGuide, setShowGuide] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,13 +115,28 @@ export default function MergerPage() {
   // Handle adding files in Sequence Mode
   const handleAddFiles = (newFileList: FileList | null) => {
     if (!newFileList || newFileList.length === 0) return;
-    const added = Array.from(newFileList);
-    setFiles((prev) => [...prev, ...added]);
-    setJobId(null);
-    setDocumentId(null);
-    setDoneJob(null);
-    setSubmitError(null);
-    showToast("info", `${added.length} berkas ditambahkan ke antrean.`, "Berkas Ditambahkan");
+    const incoming = Array.from(newFileList);
+    const valid: File[] = [];
+
+    for (const f of incoming) {
+      const ext = f.name.split(".").pop()?.toLowerCase() || "";
+      const isImg = ["jpg", "jpeg", "png"].includes(ext);
+      const limitMb = isImg ? 12 : 35;
+      if (f.size > limitMb * 1024 * 1024) {
+        showToast("error", `Berkas "${f.name}" melebihi batas ${limitMb} MB untuk ${isImg ? "gambar" : "dokumen"}.`, "Ukuran Terlalu Besar");
+      } else {
+        valid.push(f);
+      }
+    }
+
+    if (valid.length > 0) {
+      setFiles((prev) => [...prev, ...valid]);
+      setJobId(null);
+      setDocumentId(null);
+      setDoneJob(null);
+      setSubmitError(null);
+      showToast("info", `${valid.length} berkas ditambahkan ke antrean.`, "Berkas Ditambahkan");
+    }
   };
 
   const moveFileUp = (index: number) => {
@@ -161,6 +178,25 @@ export default function MergerPage() {
       return [...rest, item];
     });
   };
+  // Handle Multiple File Selection in Sequence Mode
+  const handleFilesAdd = (newFiles: FileList | File[]) => {
+    const arr = Array.from(newFiles);
+    setFiles((prev) => [...prev, ...arr]);
+    setJobId(null);
+    setDoneJob(null);
+    setSubmitError(null);
+  };
+
+  // Drag-and-drop reordering helper
+  const moveFile = (dragIndex: number, hoverIndex: number) => {
+    if (jobId) return;
+    setFiles((prev) => {
+      const next = [...prev];
+      const [removed] = next.splice(dragIndex, 1);
+      next.splice(hoverIndex, 0, removed);
+      return next;
+    });
+  };
 
   const removeFile = (index: number) => {
     if (jobId) return;
@@ -199,9 +235,8 @@ export default function MergerPage() {
       });
     }
 
-    setIsSubmitting(false);
-
     if (!res.success || !res.data) {
+      setIsSubmitting(false);
       const err = res.error || "Gagal memulai proses penggabungan berkas";
       setSubmitError(err);
       showToast("error", err, "Gagal Memproses");
@@ -210,7 +245,6 @@ export default function MergerPage() {
 
     setJobId(res.data.job_id);
     setDocumentId(res.data.document_id);
-    showToast("info", "Proses penggabungan dokumen sedang berjalan...", "Diproses");
   };
 
   const handleReset = () => {
@@ -227,11 +261,14 @@ export default function MergerPage() {
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
       {/* Page Header */}
-      <div className="page-header">
-        <h2>
-          Document <span className="highlight-span">Merger</span>
-        </h2>
-        <p>Gabungkan beberapa berkas atau sisipkan dokumen tambahan di awal, akhir, atau halaman tertentu.</p>
+      <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <h2>
+            Document <span className="highlight-span">Merger</span>
+          </h2>
+          <p>Gabungkan beberapa berkas atau sisipkan dokumen tambahan di awal, akhir, atau halaman tertentu.</p>
+        </div>
+        <GuideButton onClick={() => setShowGuide(true)} />
       </div>
 
       {/* Mode Selector Tabs */}
@@ -281,6 +318,7 @@ export default function MergerPage() {
                   accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png"
                   maxSizeMB={50}
                   onFileSelected={handleMainDocSelect}
+                  onFileClear={() => { setMainDoc(null); setJobId(null); setDoneJob(null); }}
                   disabled={isSubmitting || !!jobId}
                 />
 
@@ -304,6 +342,7 @@ export default function MergerPage() {
                   accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png"
                   maxSizeMB={50}
                   onFileSelected={handleInsertDocSelect}
+                  onFileClear={() => { setInsertDoc(null); setJobId(null); setDoneJob(null); }}
                   disabled={isSubmitting || !!jobId}
                 />
               </div>
@@ -704,45 +743,33 @@ export default function MergerPage() {
             RIGHT COLUMN: Live Visual Assembly Flow Diagram & Processing Card
             ========================================================================= */}
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-          {jobId ? (
-            <>
-              <JobProgressCard
-                job={job}
-                isPolling={isPolling}
-                error={pollError || submitError}
-                elapsedSeconds={elapsedSeconds}
-                onRetry={handleProcess}
-              />
-
-              {isDone && documentId && (
-                <div className="result-panel animate-fade-in">
-                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div className="stat-icon green" style={{ width: 44, height: 44, borderRadius: "50%" }}>
-                      <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
-                    </div>
-                    <div>
-                      <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
-                        Dokumen Berhasil Digabungkan!
-                      </h3>
-                      <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
-                        Hasil penggabungan sesuai posisi yang Anda pilih telah selesai dan siap diunduh.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
-                    <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
-                      <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
-                        <Download size={16} /> Unduh PDF Hasil
-                      </button>
-                    </a>
-                    <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
-                      <RotateCcw size={15} /> Gabungkan Berkas Lain
-                    </button>
-                  </div>
+          {isDone && documentId ? (
+            <div className="result-panel animate-fade-in">
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div className="stat-icon green" style={{ width: 44, height: 44, borderRadius: "50%" }}>
+                  <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
                 </div>
-              )}
-            </>
+                <div>
+                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                    Dokumen Berhasil Digabungkan!
+                  </h3>
+                  <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
+                    Hasil penggabungan sesuai posisi yang Anda pilih telah selesai dan siap diunduh.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
+                <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
+                  <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
+                    <Download size={16} /> Unduh PDF Hasil
+                  </button>
+                </a>
+                <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
+                  <RotateCcw size={15} /> Gabungkan Berkas Lain
+                </button>
+              </div>
+            </div>
           ) : (
             /* Visual Flow Assembly Canvas */
             <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -846,6 +873,26 @@ export default function MergerPage() {
           )}
         </div>
       </div>
+      {/* Processing Modal Overlay */}
+      <ProcessingModal
+        isOpen={isSubmitting || isPolling || Boolean((pollError || submitError) && jobId && !isDone)}
+        title="Sedang Menggabungkan Dokumen"
+        subtitle="Mohon tunggu sebentar, sistem sedang menyatukan seluruh berkas dan halaman dokumen Anda."
+        filename={tabMode === "insert" ? (mainDoc?.name || "Dokumen") : `${files.length} Dokumen Terpilih`}
+        targetFormat="PDF"
+        job={job}
+        isPolling={isPolling}
+        error={pollError || submitError}
+        elapsedSeconds={elapsedSeconds}
+        onRetry={handleProcess}
+        onClose={() => setJobId(null)}
+      />
+
+      <FeatureGuideModal
+        isOpen={showGuide}
+        onClose={() => setShowGuide(false)}
+        feature="merger"
+      />
     </div>
   );
 }
