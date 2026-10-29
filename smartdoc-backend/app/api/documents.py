@@ -1,49 +1,75 @@
+from app.core.limiter import limiter
+from app.core.concurrency import preview_capacity
 import os
 import uuid
 import base64
 import io
+import math
 import asyncio
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, UploadFile, File
+from datetime import datetime, timezone
+from fastapi import Request, HTTPException, APIRouter, Depends, Query, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc, delete
-from pydantic import BaseModel
+from sqlalchemy import select, desc, delete, func, or_
 from starlette.background import BackgroundTask
 
 from app.db.base import get_db
 from app.models.document import Document
 from app.models.job import Job
+from app.core.storage import is_storage_file
 from app.core.config import settings
 from app.core.response import ok_response, fail_response
 from app.core.logger import logger
 from app.core.validators import validate_and_read_upload, validate_file_magic_bytes, validate_image_dimensions
 from app.services.converter import convert_office_to_pdf
+from app.core.security import get_current_user
+from app.models.user import User
 
-router = APIRouter(prefix="/api/documents", tags=["Documents"])
+router = APIRouter(
+    prefix="/api/documents",
+    tags=["Documents"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 import zipfile
 
-class RenameRequest(BaseModel):
-    custom_name: str
+from app.schemas.documents import RenameRequest, BatchRequest
 
 
-class BatchRequest(BaseModel):
-    ids: list[uuid.UUID]
+async def _get_user_doc(db: AsyncSession, doc_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Document]:
+    """Helper untuk mengambil dokumen yang hanya dimiliki oleh user yang sedang login."""
+    stmt = select(Document).where(Document.id == doc_id, Document.user_id == user_id)
+    result = await db.execute(stmt)
+    return result.scalar_one_or_none()
 
 
 @router.get("")
 async def list_documents(
     page: int = Query(default=1, ge=1),
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: int = Query(default=10, ge=1, le=100),
     feature: Optional[str] = Query(default=None),
+    search: Optional[str] = Query(default=None),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Document).order_by(desc(Document.created_at))
+    base_filters = [Document.user_id == current_user.id, Document.feature != "ocr"]
     if feature:
-        stmt = stmt.where(Document.feature == feature)
+        base_filters.append(Document.feature == feature)
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        base_filters.append(or_(Document.custom_name.ilike(term), Document.original_file.ilike(term)))
+
+    # 1. Total hitung dokumen untuk pagination
+    count_stmt = select(func.count(Document.id)).where(*base_filters)
+    total_res = await db.execute(count_stmt)
+    total_items = total_res.scalar() or 0
+    total_pages = math.ceil(total_items / limit) if total_items > 0 else 1
+
+    # 2. Ambil dokumen dengan offset & limit
+    stmt = select(Document).where(*base_filters).order_by(desc(Document.created_at))
     stmt = stmt.offset((page - 1) * limit).limit(limit)
     result = await db.execute(stmt)
     docs = result.scalars().all()
@@ -52,21 +78,23 @@ async def list_documents(
         data={
             "page": page,
             "limit": limit,
+            "total_items": total_items,
+            "total_pages": total_pages,
             "items": [_doc_to_dict(d) for d in docs],
         },
         message=f"{len(docs)} dokumen ditemukan"
     )
 
 
-@router.post("/first-page-preview")
-async def generate_first_page_preview(file: UploadFile = File(...)):
+@router.post("/first-page-preview", dependencies=[Depends(preview_capacity)])
+@limiter.shared_limit(settings.PREVIEW_RATE_LIMIT, scope="document-preview", override_defaults=False)
+async def generate_first_page_preview(request: Request, file: UploadFile = File(...)):
     """
     Menghasilkan thumbnail base64 untuk seluruh halaman dokumen (multi-page preview)
     beserta thumbnail halaman pertama (Hal 1) untuk dokumen apa pun (PDF, DOCX, XLSX, PPTX, Gambar).
     """
     ext = Path(file.filename).suffix.lower()
     content = await validate_and_read_upload(file, ext)
-    validate_file_magic_bytes(content, ext)
 
     # 1. Jika gambar, kembalikan langsung sebagai data URL (1 halaman)
     if ext in {".jpg", ".jpeg", ".png"}:
@@ -105,28 +133,42 @@ async def generate_first_page_preview(file: UploadFile = File(...)):
         if not os.path.exists(working_pdf):
             return fail_response("Gagal membaca dokumen untuk pratinjau.", status_code=400)
 
+        # Ambil total halaman terlebih dahulu menggunakan pypdf (ringan)
+        from pypdf import PdfReader
+        try:
+            reader = PdfReader(working_pdf)
+            total_pages = len(reader.pages)
+        except Exception:
+            total_pages = 1
+
+        # Render HANYA halaman pertama untuk thumbnail awal (performa optimal)
+        # Gunakan DPI 120 PNG — cukup tajam untuk preview, jauh lebih ringan dari DPI 160
         from pdf2image import convert_from_path
-        # Render pages at 160 DPI in lossless PNG format for 100% crystal-clear, sharp text
-        pages = await asyncio.to_thread(convert_from_path, working_pdf, dpi=160, last_page=50)
+        pages = await asyncio.to_thread(
+            convert_from_path, working_pdf, dpi=120, first_page=1, last_page=1, timeout=settings.JOB_TIMEOUT_SECONDS
+        )
         if not pages:
             return fail_response("Dokumen tidak memiliki halaman yang dapat dirender.", status_code=400)
 
-        thumbnails: list[str] = []
-        for p in pages:
-            buf = io.BytesIO()
-            p.save(buf, format="PNG", optimize=True)
-            b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-            thumbnails.append(f"data:image/png;base64,{b64}")
+        buf = io.BytesIO()
+        pages[0].save(buf, format="PNG", optimize=True)
+        try:
+            pages[0].close()
+        except Exception:
+            pass
+        thumbnail_b64 = f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
 
         return ok_response(
             data={
-                "thumbnail": thumbnails[0] if thumbnails else None,
-                "thumbnails": thumbnails,
-                "total_pages": len(thumbnails),
+                "thumbnail": thumbnail_b64,
+                "thumbnails": [thumbnail_b64],
+                "total_pages": total_pages,
                 "filename": file.filename,
             },
-            message=f"Pratinjau {len(thumbnails)} halaman berhasil dimuat"
+            message=f"Pratinjau halaman pertama berhasil dimuat (total {total_pages} halaman)"
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning(f"Gagal merender pratinjau untuk {file.filename}: {e}")
         return fail_response(f"Gagal merender pratinjau: {str(e)}", status_code=500)
@@ -142,28 +184,27 @@ async def generate_first_page_preview(file: UploadFile = File(...)):
 @router.get("/{doc_id}/download")
 async def download_document(
     doc_id: uuid.UUID,
-    fmt: Optional[str] = Query(default=None, description="'docx' atau 'pdf' untuk dokumen OCR"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    doc = await db.get(Document, doc_id)
+    doc = await _get_user_doc(db, doc_id, current_user.id)
     if not doc:
         return fail_response("Dokumen tidak ditemukan", status_code=404)
 
-    if doc.feature == "ocr":
-        if fmt == "docx":
-            file_path = doc.output_docx
-        else:
-            file_path = doc.output_pdf
-    else:
-        file_path = doc.output_file
+    file_path = doc.output_file
 
     if not file_path or not os.path.exists(file_path):
         return fail_response("File output tidak ditemukan", status_code=404)
 
-    download_name = doc.custom_name or os.path.basename(file_path)
+    # 🔒 Path traversal guard: pastikan file berada di dalam STORAGE_PATH
+    real_file_path = os.path.realpath(file_path)
+    if not is_storage_file(real_file_path):
+        logger.warning(f"Path traversal attempt blocked: {file_path}")
+        return fail_response("Akses file tidak diizinkan.", status_code=403)
 
+    download_name = doc.custom_name or os.path.basename(file_path)
     return FileResponse(
-        path=file_path,
+        path=real_file_path,
         filename=download_name,
         media_type="application/octet-stream"
     )
@@ -172,17 +213,24 @@ async def download_document(
 @router.get("/{doc_id}/preview")
 async def preview_document(
     doc_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    doc = await db.get(Document, doc_id)
+    doc = await _get_user_doc(db, doc_id, current_user.id)
     if not doc:
         return fail_response("Dokumen tidak ditemukan", status_code=404)
 
-    file_path = doc.output_pdf or doc.output_file
+    file_path = doc.output_file
     if not file_path or not os.path.exists(file_path):
         return fail_response("Berkas pratinjau tidak ditemukan", status_code=404)
 
-    ext = Path(file_path).suffix.lower()
+    # 🔒 Path traversal guard
+    real_file_path = os.path.realpath(file_path)
+    if not is_storage_file(real_file_path):
+        logger.warning(f"Path traversal attempt blocked: {file_path}")
+        return fail_response("Akses file tidak diizinkan.", status_code=403)
+
+    ext = Path(real_file_path).suffix.lower()
     media_map = {
         ".pdf": "application/pdf",
         ".png": "image/png",
@@ -192,15 +240,19 @@ async def preview_document(
     media_type = media_map.get(ext, "application/octet-stream")
 
     return FileResponse(
-        path=file_path,
+        path=real_file_path,
         media_type=media_type,
         content_disposition_type="inline",
     )
 
 
 @router.get("/{doc_id}")
-async def get_document(doc_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    doc = await db.get(Document, doc_id)
+async def get_document(
+    doc_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    doc = await _get_user_doc(db, doc_id, current_user.id)
     if not doc:
         return fail_response("Dokumen tidak ditemukan", status_code=404)
     return ok_response(data=_doc_to_dict(doc), message="Detail dokumen berhasil diambil")
@@ -210,9 +262,10 @@ async def get_document(doc_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
 async def rename_document(
     doc_id: uuid.UUID,
     body: RenameRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    doc = await db.get(Document, doc_id)
+    doc = await _get_user_doc(db, doc_id, current_user.id)
     if not doc:
         return fail_response("Dokumen tidak ditemukan", status_code=404)
 
@@ -226,14 +279,15 @@ async def rename_document(
 @router.delete("/{doc_id}")
 async def delete_document(
     doc_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        doc = await db.get(Document, doc_id)
+        doc = await _get_user_doc(db, doc_id, current_user.id)
         if not doc:
             return fail_response("Dokumen tidak ditemukan", status_code=404)
 
-        for attr in ("original_file", "output_file", "output_docx", "output_pdf"):
+        for attr in ("original_file", "output_file"):
             path = getattr(doc, attr, None)
             if path and os.path.exists(path):
                 try:
@@ -257,31 +311,40 @@ async def delete_document(
 @router.post("/batch-delete")
 async def batch_delete_documents(
     body: BatchRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not body.ids:
         return fail_response("Tidak ada dokumen yang dipilih", status_code=400)
 
     try:
-        deleted_count = 0
-        for doc_id in body.ids:
-            doc = await db.get(Document, doc_id)
-            if doc:
-                for attr in ("original_file", "output_file", "output_docx", "output_pdf"):
-                    path = getattr(doc, attr, None)
-                    if path and os.path.exists(path):
-                        try:
-                            os.remove(path)
-                            logger.info(f"File dihapus: {path}")
-                        except Exception as e:
-                            logger.warning(f"Gagal hapus file {path}: {e}")
+        # Ambil semua dokumen dalam 1 query milik user ini (menghindari N+1 & isolasi user)
+        result = await db.execute(
+            select(Document).where(Document.id.in_(body.ids), Document.user_id == current_user.id)
+        )
+        docs = result.scalars().all()
 
-                await db.execute(delete(Job).where(Job.document_id == doc_id))
-                await db.delete(doc)
-                deleted_count += 1
+        deleted_count = 0
+        doc_ids_found = []
+        for doc in docs:
+            for attr in ("original_file", "output_file"):
+                path = getattr(doc, attr, None)
+                if path and os.path.exists(path):
+                    try:
+                        os.remove(path)
+                        logger.info(f"File dihapus: {path}")
+                    except Exception as e:
+                        logger.warning(f"Gagal hapus file {path}: {e}")
+            doc_ids_found.append(doc.id)
+            await db.delete(doc)
+            deleted_count += 1
+
+        # Hapus semua jobs terkait dalam 1 query
+        if doc_ids_found:
+            await db.execute(delete(Job).where(Job.document_id.in_(doc_ids_found)))
 
         await db.commit()
-        logger.info(f"{deleted_count} dokumen berhasil dihapus secara batch")
+        logger.info(f"{deleted_count} dokumen milik {current_user.username} berhasil dihapus secara batch")
         return ok_response(data={"deleted_count": deleted_count}, message=f"{deleted_count} dokumen berhasil dihapus")
     except Exception as e:
         logger.error(f"Batch delete error: {e}")
@@ -292,45 +355,50 @@ async def batch_delete_documents(
 @router.post("/batch-download")
 async def batch_download_documents(
     body: BatchRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not body.ids:
         return fail_response("Tidak ada dokumen yang dipilih", status_code=400)
+
+    # Ambil dokumen sekaligus dalam 1 query (eliminasi N+1 & pastikan kepemilikan user)
+    result = await db.execute(
+        select(Document).where(Document.id.in_(body.ids), Document.user_id == current_user.id)
+    )
+    docs = result.scalars().all()
+
+    if not docs:
+        return fail_response("Tidak ada dokumen yang valid untuk diunduh", status_code=404)
 
     temp_zip_id = str(uuid.uuid4())
     temp_dir = os.path.join(settings.STORAGE_PATH, "temp")
     os.makedirs(temp_dir, exist_ok=True)
     temp_zip_path = os.path.join(temp_dir, f"batch_download_{temp_zip_id}.zip")
 
-    added_files = 0
-    used_names: set[str] = set()
-
-    with zipfile.ZipFile(temp_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for doc_id in body.ids:
-            doc = await db.get(Document, doc_id)
-            if not doc:
-                continue
-
-            file_path = None
-            if doc.feature == "ocr":
-                file_path = doc.output_pdf or doc.output_docx
-            else:
+    def _build_zip_archive() -> int:
+        added = 0
+        used_names: set[str] = set()
+        with zipfile.ZipFile(temp_zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for doc in docs:
                 file_path = doc.output_file
+                if not file_path or not is_storage_file(file_path) or not os.path.exists(file_path):
+                    continue
 
-            if not file_path or not os.path.exists(file_path):
-                continue
+                base_name = doc.custom_name or os.path.basename(file_path)
+                stem, ext = os.path.splitext(base_name)
+                final_name = base_name
+                counter = 1
+                while final_name in used_names:
+                    final_name = f"{stem} ({counter}){ext}"
+                    counter += 1
 
-            base_name = doc.custom_name or os.path.basename(file_path)
-            stem, ext = os.path.splitext(base_name)
-            final_name = base_name
-            counter = 1
-            while final_name in used_names:
-                final_name = f"{stem} ({counter}){ext}"
-                counter += 1
+                used_names.add(final_name)
+                zf.write(file_path, final_name)
+                added += 1
+        return added
 
-            used_names.add(final_name)
-            zf.write(file_path, final_name)
-            added_files += 1
+    # Jalankan penulisan ZIP secara asinkron di worker thread agar tidak memblokir event loop
+    added_files = await asyncio.to_thread(_build_zip_archive)
 
     if added_files == 0:
         if os.path.exists(temp_zip_path):
@@ -353,11 +421,8 @@ def _doc_to_dict(doc: Document) -> dict:
         "custom_name": doc.custom_name,
         "original_file": os.path.basename(doc.original_file) if doc.original_file else None,
         "output_file": os.path.basename(doc.output_file) if doc.output_file else None,
-        "output_docx": os.path.basename(doc.output_docx) if doc.output_docx else None,
-        "output_pdf": os.path.basename(doc.output_pdf) if doc.output_pdf else None,
         "original_size": doc.original_size,
         "output_size": doc.output_size,
         "status": doc.status,
-        "confidence_score": doc.confidence_score,
         "created_at": doc.created_at.isoformat(),
     }

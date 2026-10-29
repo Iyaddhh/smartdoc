@@ -1,16 +1,18 @@
+from app.core.limiter import limiter
 import os
 import uuid
 import asyncio
-from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, Depends, UploadFile, File, BackgroundTasks
+from fastapi import Request, APIRouter, Depends, UploadFile, File, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db, AsyncSessionLocal
 from app.models.document import Document
 from app.models.job import Job
+from app.models.user import User
 from app.core.config import settings
 from app.core.concurrency import job_semaphore
+from app.core.datetime_utils import utc_now
 from app.core.response import ok_response
 from app.core.logger import logger
 from app.core.validators import (
@@ -21,8 +23,13 @@ from app.services.compressor import (
     async_compress_pdf, compress_jpg, async_compress_png,
     compress_docx, compress_xlsx, compress_pptx
 )
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/compressor", tags=["Compressor"])
+router = APIRouter(
+    prefix="/api/compressor",
+    tags=["Compressor"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 async def _run_compress_job(job_id: str, document_id: str, input_path: str, output_path: str, ext: str, quality: int, dpi: int):
@@ -33,7 +40,7 @@ async def _run_compress_job(job_id: str, document_id: str, input_path: str, outp
                 job = await db.get(Job, uuid.UUID(job_id))
                 job.status = "processing"
                 job.progress = 25
-                job.started_at = datetime.utcnow()
+                job.started_at = utc_now()
                 await db.commit()
 
                 success = False
@@ -58,7 +65,7 @@ async def _run_compress_job(job_id: str, document_id: str, input_path: str, outp
                 job = await db.get(Job, uuid.UUID(job_id))
                 job.status = "done"
                 job.progress = 100
-                job.finished_at = datetime.utcnow()
+                job.finished_at = utc_now()
                 await db.commit()
 
                 doc = await db.get(Document, uuid.UUID(document_id))
@@ -75,22 +82,30 @@ async def _run_compress_job(job_id: str, document_id: str, input_path: str, outp
                 if job:
                     job.status = "failed"
                     job.error = str(e)
-                    job.finished_at = datetime.utcnow()
+                    job.finished_at = utc_now()
                 doc = await db.get(Document, uuid.UUID(document_id))
                 if doc:
                     doc.status = "failed"
+                    # Cleanup file original jika job gagal
+                    if doc.original_file and os.path.exists(doc.original_file):
+                        try:
+                            os.remove(doc.original_file)
+                        except Exception:
+                            pass
                 await db.commit()
 
 
-@router.post("/process")
+@router.post("/process", status_code=202)
+@limiter.shared_limit(settings.PROCESS_RATE_LIMIT, scope="document-process", override_defaults=False)
 async def compress_file(
     background_tasks: BackgroundTasks,
+    request: Request,
     file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     ext = validate_file_extension(file.filename, ALLOWED_COMPRESSOR_EXTENSIONS)
     content = await validate_and_read_upload(file, ext)
-    validate_file_magic_bytes(content, ext)
     if ext.lower() in (".jpg", ".jpeg", ".png"):
         validate_image_dimensions(content)
 
@@ -119,6 +134,7 @@ async def compress_file(
 
     doc = Document(
         id=doc_id,
+        user_id=current_user.id,
         feature="compressor",
         custom_name=custom_output_name,
         original_file=original_path,

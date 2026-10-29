@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useClientReady } from "@/hooks/useClientReady";
 import {
   X,
   HelpCircle,
   BookOpen,
-  CheckCircle2,
   AlertTriangle,
   Lightbulb,
   FileText,
@@ -14,7 +14,6 @@ import {
   Scissors,
   Minimize2,
   ShieldAlert,
-  Lock,
 } from "lucide-react";
 
 export type FeatureType = "converter" | "compressor" | "splitter" | "merger" | "watermark";
@@ -52,12 +51,12 @@ const GUIDES: Record<FeatureType, FeatureGuideContent> = {
     limits: [
       { label: "Dokumen Office (.docx, .xlsx, .pptx)", value: "Maksimal 35 MB" },
       { label: "Dokumen PDF (.pdf)", value: "Maksimal 35 MB & Maks 50 Halaman" },
-      { label: "Berkas Gambar (.jpg, .jpeg, .png)", value: "Maksimal 12 MB & Maks 6000px" },
+      { label: "Berkas Gambar (.jpg, .jpeg, .png)", value: "Maksimal 12 MB & Maks 10000px" },
       { label: "Kualitas Render Gambar", value: "Lossless PNG / JPG High Resolution (160 DPI)" },
     ],
     tips: [
       "Konversi dari PDF ke Word (.docx) bekerja paling optimal pada PDF dokumen digital berbasis teks.",
-      "Jika PDF Anda merupakan hasil scan kamera/fisik, gunakan fitur OCR untuk hasil ekstraksi teks yang akurat.",
+      "PDF hasil scan kamera/fisik belum dapat diekstrak menjadi teks yang bisa diedit.",
     ],
   },
   compressor: {
@@ -81,7 +80,7 @@ const GUIDES: Record<FeatureType, FeatureGuideContent> = {
     ],
     limits: [
       { label: "Batas Ukuran Dokumen / PDF", value: "Maksimal 35 MB (Maks 50 Halaman)" },
-      { label: "Batas Ukuran Gambar", value: "Maksimal 12 MB & Maks 6000px" },
+      { label: "Batas Ukuran Gambar", value: "Maksimal 12 MB & Maks 10000px" },
       { label: "Smart Protection", value: "Jika file asli sudah optimal, sistem aman mengembalikan file asli tanpa merusak kualitas." },
     ],
     tips: [
@@ -189,11 +188,8 @@ interface FeatureGuideModalProps {
 }
 
 export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureGuideModalProps) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useClientReady();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (!isOpen) return;

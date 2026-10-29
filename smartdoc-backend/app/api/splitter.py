@@ -1,19 +1,22 @@
+from app.core.limiter import limiter
+from typing import Literal
 import os
 import uuid
 import asyncio
 import base64
 from io import BytesIO
-from datetime import datetime
 from pathlib import Path
 from typing import Optional, List
-from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
+from fastapi import Request, APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db, AsyncSessionLocal
 from app.models.document import Document
 from app.models.job import Job
+from app.models.user import User
 from app.core.config import settings
-from app.core.concurrency import job_semaphore
+from app.core.concurrency import job_semaphore, preview_capacity
+from app.core.datetime_utils import utc_now
 from app.core.response import ok_response, fail_response
 from app.core.logger import logger
 from app.core.validators import validate_and_read_upload, validate_file_magic_bytes
@@ -25,8 +28,13 @@ from app.services.splitter import (
     split_pdf_by_chunks,
     split_all_single_pages,
 )
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/splitter", tags=["Splitter"])
+router = APIRouter(
+    prefix="/api/splitter",
+    tags=["Splitter"],
+    dependencies=[Depends(get_current_user)],
+)
 
 ALLOWED_SPLIT_EXTENSIONS = {".pdf", ".docx"}
 
@@ -73,7 +81,7 @@ async def _run_split_job(
                 job = await db.get(Job, uuid.UUID(job_id))
                 job.status = "processing"
                 job.progress = 20
-                job.started_at = datetime.utcnow()
+                job.started_at = utc_now()
                 await db.commit()
 
                 async def _do_split():
@@ -146,7 +154,7 @@ async def _run_split_job(
                 job = await db.get(Job, uuid.UUID(job_id))
                 job.status = "done"
                 job.progress = 100
-                job.finished_at = datetime.utcnow()
+                job.finished_at = utc_now()
                 await db.commit()
 
                 logger.info(f"[job:{job_id}] Pemisahan dokumen berhasil: {output_path}")
@@ -157,10 +165,16 @@ async def _run_split_job(
                 if job:
                     job.status = "failed"
                     job.error = str(e)
-                    job.finished_at = datetime.utcnow()
+                    job.finished_at = utc_now()
                 doc = await db.get(Document, uuid.UUID(document_id))
                 if doc:
                     doc.status = "failed"
+                    # Cleanup file original jika job gagal
+                    if doc.original_file and os.path.exists(doc.original_file):
+                        try:
+                            os.remove(doc.original_file)
+                        except Exception:
+                            pass
                 await db.commit()
             finally:
                 if temp_pdf_to_clean and os.path.exists(temp_pdf_to_clean):
@@ -170,8 +184,9 @@ async def _run_split_job(
                         pass
 
 
-@router.post("/info")
-async def get_document_info(file: UploadFile = File(...)):
+@router.post("/info", dependencies=[Depends(preview_capacity)])
+@limiter.shared_limit(settings.PREVIEW_RATE_LIMIT, scope="document-preview", override_defaults=False)
+async def get_document_info(request: Request, file: UploadFile = File(...)):
     """
     Mengambil informasi berkas (total halaman dan preview thumbnail) sebelum eksekusi split.
     """
@@ -183,7 +198,6 @@ async def get_document_info(file: UploadFile = File(...)):
         )
 
     content = await validate_and_read_upload(file, ext)
-    validate_file_magic_bytes(content, ext)
 
     temp_id = str(uuid.uuid4())
     temp_dir = os.path.join(settings.STORAGE_PATH, "temp")
@@ -223,14 +237,17 @@ async def get_document_info(file: UploadFile = File(...)):
                     pass
 
 
-@router.post("/process")
+@router.post("/process", status_code=202)
+@limiter.shared_limit(settings.PROCESS_RATE_LIMIT, scope="document-process", override_defaults=False)
 async def split_document(
     background_tasks: BackgroundTasks,
+    request: Request,
     file: UploadFile = File(...),
-    split_mode: str = Form(..., description="'extract_range', 'fixed_interval', 'all_single'"),
+    split_mode: Literal["extract_range", "fixed_interval", "all_single"] = Form(..., description="'extract_range', 'fixed_interval', 'all_single'"),
     range_expression: Optional[str] = Form(None, description="cth: '1-3, 5, 8-10'"),
-    chunk_size: int = Form(1, description="Interval halaman untuk mode fixed_interval"),
-    output_format: str = Form("pdf", description="'pdf' atau 'docx'"),
+    chunk_size: int = Form(1, ge=1, description="Interval halaman untuk mode fixed_interval"),
+    output_format: Literal["pdf", "docx"] = Form("pdf", description="'pdf' atau 'docx'"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     ext = Path(file.filename).suffix.lower()
@@ -241,7 +258,6 @@ async def split_document(
         )
 
     content = await validate_and_read_upload(file, ext)
-    validate_file_magic_bytes(content, ext)
 
     original_id = str(uuid.uuid4())
     original_dir = os.path.join(settings.STORAGE_PATH, "documents", "originals")
@@ -251,10 +267,9 @@ async def split_document(
     with open(original_path, "wb") as f:
         f.write(content)
 
+    user_stem = Path(file.filename).stem
     output_dir = os.path.join(settings.STORAGE_PATH, "documents", "outputs")
     os.makedirs(output_dir, exist_ok=True)
-
-    user_stem = Path(file.filename).stem
 
     if split_mode == "extract_range":
         out_ext = ".docx" if output_format == "docx" else ".pdf"
@@ -269,6 +284,7 @@ async def split_document(
 
     doc = Document(
         id=uuid.uuid4(),
+        user_id=current_user.id,
         feature="splitter",
         custom_name=custom_output_name,
         original_file=original_path,

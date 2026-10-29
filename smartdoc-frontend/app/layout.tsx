@@ -1,11 +1,11 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
-import Sidebar from "@/components/Sidebar";
+import { AuthProvider } from "@/lib/AuthContext";
 import ToastContainer from "@/components/Toast";
 
 export const metadata: Metadata = {
   title: "SmartDoc — Document Management System",
-  description: "Platform terpadu untuk konversi, kompresi, pemisahan halaman, dan digitalisasi dokumen berstandar profesional.",
+  description: "Platform terpadu untuk konversi, kompresi, pemisahan halaman, dan pengamanan dokumen berstandar profesional.",
 };
 
 export const viewport: Viewport = {
@@ -27,11 +27,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body>
-        <div className="layout">
-          <Sidebar />
-          <main className="main-content">{children}</main>
+        <AuthProvider>
+          {children}
           <ToastContainer />
-        </div>
+        </AuthProvider>
       </body>
     </html>
   );

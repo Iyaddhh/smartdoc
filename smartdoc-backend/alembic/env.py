@@ -7,7 +7,7 @@ from alembic import context
 
 from app.core.config import settings
 from app.db.base import Base
-from app.models import Template, Document, Job  # Register all models for metadata
+from app.models import Document, Job, User  # Register all models for metadata
 
 config = context.config
 

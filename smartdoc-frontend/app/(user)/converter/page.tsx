@@ -1,18 +1,19 @@
 "use client";
 
+import { useFilePreview } from "@/hooks/useFilePreview";
+import DownloadLink from "@/components/DownloadLink";
+
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import FileUpload from "@/components/FileUpload";
 import ProcessingModal from "@/components/ProcessingModal";
 import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
-import { useJobPolling } from "@/lib/useJobPolling";
+import { useJobPolling } from "@/hooks/useJobPolling";
 import { convertFile, getDownloadUrl, getPreviewUrl, getDocument, JobStatus, DocumentItem } from "@/lib/api";
 import { showToast } from "@/components/Toast";
 import {
   FileOutput,
   Download,
-  CheckCircle2,
-  Info,
   ArrowRight,
   AlertCircle,
   RefreshCw,
@@ -24,16 +25,11 @@ import {
   Presentation,
   FileImage,
   Archive,
-  Copy,
-  Check,
   X,
   Sparkles,
-  Layers,
   Plus,
-  Trash2,
   ChevronUp,
   ChevronDown,
-  UploadCloud,
 } from "lucide-react";
 
 type OutputFormat = "pdf" | "docx" | "jpg" | "png";
@@ -73,7 +69,7 @@ function formatBytes(bytes: number): string {
 
 const MAX_IMAGE_MB = 12;
 const MAX_DOC_MB = 35;
-const MAX_IMAGE_DIM_PX = 6000;
+const MAX_IMAGE_DIM_PX = 10000;
 const MAX_MULTI_IMAGES = 50;
 
 async function validateImageFile(file: File): Promise<{ valid: boolean; error?: string }> {
@@ -118,6 +114,8 @@ function ImageItemPreview({ file }: { file: File }) {
 
   useEffect(() => {
     const url = URL.createObjectURL(file);
+    // Blob URLs are external resources, created and revoked together in this effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSrc(url);
     return () => {
       URL.revokeObjectURL(url);
@@ -175,7 +173,6 @@ export default function ConverterPage() {
   const [docId, setDocId] = useState<string | null>(null);
   const [doneJob, setDoneJob] = useState<JobStatus | null>(null);
   const [docDetails, setDocDetails] = useState<DocumentItem | null>(null);
-  const [redirectOcr, setRedirectOcr] = useState(false);
   const [loading, setLoading] = useState(false);
   const [isFileLoading, setIsFileLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -278,7 +275,6 @@ export default function ConverterPage() {
     setDoneJob(null);
     setDocDetails(null);
     setErrorMsg(null);
-    setRedirectOcr(false);
     setIsFullscreen(false);
   };
 
@@ -351,7 +347,6 @@ export default function ConverterPage() {
     setErrorMsg(null);
     setDoneJob(null);
     setDocDetails(null);
-    setRedirectOcr(false);
 
     const payload = files.length === 1 ? files[0] : files;
     const res = await convertFile(payload, outputFormat, customTitle || undefined);
@@ -364,12 +359,6 @@ export default function ConverterPage() {
       return;
     }
 
-    if (res.data.redirect) {
-      setLoading(false);
-      setRedirectOcr(true);
-      showToast("info", "PDF ini terdeteksi scan fisik. Dialihkan ke fitur OCR.", "Deteksi Dokumen");
-      return;
-    }
 
     setJobId(res.data.job_id);
     setDocId(res.data.document_id);
@@ -384,7 +373,6 @@ export default function ConverterPage() {
     setOutputFormat("");
     setCustomTitle("");
     setErrorMsg(null);
-    setRedirectOcr(false);
     setIsFullscreen(false);
   };
 
@@ -400,6 +388,8 @@ export default function ConverterPage() {
   const isImageOutput = ["jpg", "jpeg", "png"].includes(outputExt);
   const isZipOutput = outputExt === "zip" || outputFileName.toLowerCase().endsWith(".zip");
   const isDocxOutput = ["docx", "doc"].includes(outputExt);
+
+  const previewUrl = useFilePreview(isDone && docId && (isPdfOutput || isImageOutput) ? getPreviewUrl(docId) : null);
 
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
@@ -476,7 +466,7 @@ export default function ConverterPage() {
                 {(isPdfOutput || isImageOutput) && (
                   <>
                     <a
-                      href={getPreviewUrl(docId)}
+                      href={previewUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-sm"
@@ -513,7 +503,7 @@ export default function ConverterPage() {
                 }}
               >
                 <iframe
-                  src={`${getPreviewUrl(docId)}#toolbar=1&navpanes=0`}
+                  src={previewUrl ? `${previewUrl}#toolbar=1&navpanes=0` : undefined}
                   title="Pratinjau Dokumen PDF"
                   style={{ width: "100%", height: "100%", border: "none" }}
                 />
@@ -535,7 +525,7 @@ export default function ConverterPage() {
                 }}
               >
                 <img
-                  src={getPreviewUrl(docId)}
+                  src={previewUrl}
                   alt="Pratinjau Gambar Hasil Konversi"
                   style={{
                     maxWidth: "100%",
@@ -701,14 +691,14 @@ export default function ConverterPage() {
               }}
             >
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-                <a
+                <DownloadLink
                   href={getDownloadUrl(docId)}
                   download
                   className="btn btn-primary btn-lg"
                   style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
                 >
                   <Download size={18} /> Unduh Berkas Hasil
-                </a>
+                </DownloadLink>
                 <button
                   type="button"
                   className="btn btn-secondary btn-lg"
@@ -743,7 +733,7 @@ export default function ConverterPage() {
         <div className="grid-2" style={{ alignItems: "start" }}>
           {/* Upload & Setup Column */}
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            
+
             {/* Case A: No file selected yet */}
             {files.length === 0 && (
               <div className="card">
@@ -1057,21 +1047,6 @@ export default function ConverterPage() {
               </div>
             )}
 
-            {/* OCR Redirect Banner */}
-            {redirectOcr && (
-              <div className="alert alert-info animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
-                  <Info size={16} style={{ flexShrink: 0, marginTop: "2px" }} />
-                  <span>PDF ini merupakan pindaian fisik. Gunakan OCR Template-Based untuk mengekstrak dan mengubahnya menjadi DOCX.</span>
-                </div>
-                <Link href="/scan">
-                  <button className="btn btn-primary btn-sm">
-                    Buka Fitur OCR <ArrowRight size={13} />
-                  </button>
-                </Link>
-              </div>
-            )}
-
             {/* Main Action Button with Loading state */}
             <button
               className="btn btn-primary btn-lg"
@@ -1159,14 +1134,14 @@ export default function ConverterPage() {
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-              <a
+              <DownloadLink
                 href={getDownloadUrl(docId)}
                 download
                 className="btn btn-primary btn-sm"
                 style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
               >
                 <Download size={14} /> Unduh
-              </a>
+              </DownloadLink>
               <button
                 onClick={() => setIsFullscreen(false)}
                 style={{
@@ -1198,7 +1173,7 @@ export default function ConverterPage() {
           >
             {isPdfOutput ? (
               <iframe
-                src={getPreviewUrl(docId)}
+                src={previewUrl}
                 title="Pratinjau PDF Layar Penuh"
                 style={{
                   width: "90%",
@@ -1210,7 +1185,7 @@ export default function ConverterPage() {
               />
             ) : isImageOutput ? (
               <img
-                src={getPreviewUrl(docId)}
+                src={previewUrl}
                 alt="Pratinjau Gambar Layar Penuh"
                 style={{
                   maxWidth: "92%",

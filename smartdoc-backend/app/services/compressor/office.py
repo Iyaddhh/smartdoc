@@ -6,6 +6,7 @@ from pathlib import Path
 from PIL import Image
 from app.core.logger import logger
 from app.core.config import settings
+from app.core.validators import validate_image_dimensions, validate_office_archive
 
 
 def _compress_image_bytes(image_bytes: bytes, quality: int | None = None) -> bytes:
@@ -13,6 +14,7 @@ def _compress_image_bytes(image_bytes: bytes, quality: int | None = None) -> byt
     target_quality = quality or settings.COMPRESSION_IMAGE_QUALITY
     img = None
     try:
+        validate_image_dimensions(image_bytes)
         img = Image.open(io.BytesIO(image_bytes))
         output = io.BytesIO()
         fmt = img.format or "JPEG"
@@ -44,6 +46,8 @@ def _compress_office_zip(input_path: str, output_path: str, image_quality: int |
     IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff"}
 
     try:
+        with open(input_path, "rb") as source:
+            validate_office_archive(source.read(), Path(input_path).suffix)
         with zipfile.ZipFile(input_path, 'r') as zin:
             with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zout:
                 for item in zin.infolist():

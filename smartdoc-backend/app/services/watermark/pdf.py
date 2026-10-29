@@ -114,11 +114,13 @@ def apply_watermark_and_security(
             writer.encrypt(
                 user_password=password.strip(),
                 owner_password=f"{password.strip()}_owner_{uuid.uuid4().hex[:6]}",
-                use_128bit=True,
+                algorithm="AES-128",
             )
             logger.info(f"Proteksi password AES-128 diaktifkan pada: {output_path}")
 
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        out_dir = os.path.dirname(output_path)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
         with open(output_path, "wb") as f_out:
             writer.write(f_out)
 

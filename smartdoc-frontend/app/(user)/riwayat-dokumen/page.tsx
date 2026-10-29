@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import Link from "next/link";
+import DownloadLink from "@/components/DownloadLink";
+
+import { useState, useEffect, useCallback } from "react";
 import {
   listDocuments,
   deleteDocument,
@@ -26,15 +27,18 @@ import {
   Scissors,
   Combine,
   ShieldCheck,
-  ScanLine,
   Search,
   AlertCircle,
   Layers,
   TrendingDown,
   CheckSquare,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
 } from "lucide-react";
 
-type ActiveTab = "" | "converter" | "compressor" | "splitter" | "merger" | "watermark" | "ocr";
+type ActiveTab = "" | "converter" | "compressor" | "splitter" | "merger" | "watermark";
 
 function formatBytes(bytes: number | null | undefined): string {
   if (!bytes || bytes <= 0) return "—";
@@ -61,7 +65,6 @@ const TAB_CONFIG: { id: ActiveTab; label: string; icon: React.ReactNode }[] = [
   { id: "splitter", label: "Splitter", icon: <Scissors size={14} /> },
   { id: "merger", label: "Merger", icon: <Combine size={14} /> },
   { id: "watermark", label: "Watermark", icon: <ShieldCheck size={14} /> },
-  { id: "ocr", label: "OCR / Scan", icon: <ScanLine size={14} /> },
 ];
 
 export default function RiwayatDokumenPage() {
@@ -73,12 +76,15 @@ export default function RiwayatDokumenPage() {
     splitter: 0,
     merger: 0,
     watermark: 0,
-    ocr: 0,
   });
   const [activeTab, setActiveTab] = useState<ActiveTab>("");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10); // Minimum & default 10
+  const [totalItems, setTotalItems] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -89,17 +95,34 @@ export default function RiwayatDokumenPage() {
   const [isBatchDeleting, setIsBatchDeleting] = useState(false);
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
 
+  // Debounce search query to prevent excessive backend queries
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchDocs = useCallback(async () => {
     setLoading(true);
     setFetchError(null);
 
     const [res, allRes] = await Promise.all([
-      listDocuments({ page, limit: 50, feature: activeTab || undefined }),
-      listDocuments({ page: 1, limit: 100 }),
+      listDocuments({
+        page,
+        limit: pageSize,
+        feature: activeTab || undefined,
+        search: debouncedSearchQuery.trim() || undefined,
+      }),
+      listDocuments({ page: 1, limit: 1000 }),
     ]);
 
     if (res.success && res.data) {
       setDocs(res.data.items);
+      const total = res.data.total_items ?? res.data.items.length;
+      setTotalItems(total);
+      setTotalPages(res.data.total_pages ?? Math.max(1, Math.ceil(total / pageSize)));
     } else {
       const err = res.error || "Gagal memuat riwayat dokumen";
       setFetchError(err);
@@ -109,32 +132,25 @@ export default function RiwayatDokumenPage() {
     if (allRes.success && allRes.data) {
       const allItems = allRes.data.items;
       setAllDocsCount({
-        total: allItems.length,
+        total: allRes.data.total_items ?? allItems.length,
         converter: allItems.filter((d) => d.feature === "converter").length,
         compressor: allItems.filter((d) => d.feature === "compressor").length,
         splitter: allItems.filter((d) => d.feature === "splitter").length,
         merger: allItems.filter((d) => d.feature === "merger").length,
         watermark: allItems.filter((d) => d.feature === "watermark").length,
-        ocr: allItems.filter((d) => d.feature === "ocr").length,
       });
     }
 
     setLoading(false);
-  }, [page, activeTab]);
+  }, [page, pageSize, activeTab, debouncedSearchQuery]);
 
   useEffect(() => {
+    // Synchronize paginated remote data when the query changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchDocs();
   }, [fetchDocs]);
 
-  const filteredDocs = useMemo(() => {
-    if (!searchQuery.trim()) return docs;
-    const q = searchQuery.toLowerCase();
-    return docs.filter((d) => {
-      const name = (d.custom_name || d.original_file || "").toLowerCase();
-      const feature = d.feature.toLowerCase();
-      return name.includes(q) || feature.includes(q);
-    });
-  }, [docs, searchQuery]);
+  const filteredDocs = docs;
 
   const handleTabChange = (tab: ActiveTab) => {
     setActiveTab(tab);
@@ -142,6 +158,37 @@ export default function RiwayatDokumenPage() {
     setSearchQuery("");
     setSelectedIds(new Set());
   };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages && newPage !== page) {
+      setPage(newPage);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
+    setPage(1);
+  };
+
+  const getPageNumbers = () => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (page > 3) pages.push("...");
+      const start = Math.max(2, page - 1);
+      const end = Math.min(totalPages - 1, page + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (page < totalPages - 2) pages.push("...");
+      pages.push(totalPages);
+    }
+    return pages;
+  };
+
+  const startItem = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const endItem = Math.min(page * pageSize, totalItems);
 
   const handleRenameStart = (doc: DocumentItem) => {
     setRenaming(doc.id);
@@ -255,8 +302,8 @@ export default function RiwayatDokumenPage() {
       document.body.removeChild(a);
 
       showToast("success", `${count} dokumen berhasil dikemas dan diunduh.`, "Unduhan Selesai");
-    } catch (err: any) {
-      showToast("error", err.message || "Gagal mengunduh kumpulan dokumen.", "Kendala Unduhan");
+    } catch (err: unknown) {
+      showToast("error", err instanceof Error ? err.message : "Gagal mengunduh kumpulan dokumen.", "Kendala Unduhan");
     } finally {
       setIsBatchDownloading(false);
     }
@@ -270,7 +317,7 @@ export default function RiwayatDokumenPage() {
           <h2>
             Riwayat <span className="highlight-span">Dokumen</span>
           </h2>
-          <p>Daftar lengkap seluruh berkas hasil konversi, kompresi, pemisahan, penggabungan, watermark, dan digitalisasi OCR.</p>
+          <p>Daftar lengkap seluruh berkas hasil konversi, kompresi, pemisahan, penggabungan, watermark, .</p>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -435,7 +482,7 @@ export default function RiwayatDokumenPage() {
                 ? allDocsCount.merger
                 : tab.id === "watermark"
                 ? allDocsCount.watermark
-                : allDocsCount.ocr;
+                : 0;
 
             return (
               <button
@@ -621,25 +668,6 @@ export default function RiwayatDokumenPage() {
           </p>
         </div>
 
-        <div
-          className="card"
-          onClick={() => handleTabChange("ocr")}
-          style={{
-            cursor: "pointer",
-            border: activeTab === "ocr" ? "1px solid var(--color-cyan-edge)" : undefined,
-            padding: "12px 14px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-            <div className="stat-icon amber" style={{ width: 28, height: 28 }}>
-              <ScanLine size={13} />
-            </div>
-            <span style={{ fontSize: "11px", color: "var(--color-warm-gray)" }}>OCR / Scan</span>
-          </div>
-          <p style={{ fontSize: "17px", fontWeight: 600, color: "var(--color-ink-black)" }}>
-            {allDocsCount.ocr} <span style={{ fontSize: "11.5px", fontWeight: 400, color: "var(--color-warm-gray)" }}>file</span>
-          </p>
-        </div>
       </div>
 
       {/* Error state banner */}
@@ -676,8 +704,6 @@ export default function RiwayatDokumenPage() {
               <Combine size={36} style={{ color: "var(--color-cyan-edge)" }} />
             ) : activeTab === "watermark" ? (
               <ShieldCheck size={36} style={{ color: "var(--clr-success)" }} />
-            ) : activeTab === "ocr" ? (
-              <ScanLine size={36} style={{ color: "var(--clr-accent-amber, #f59e0b)" }} />
             ) : (
               <History size={36} style={{ color: "var(--color-ash-gray)" }} />
             )
@@ -695,8 +721,6 @@ export default function RiwayatDokumenPage() {
               ? "Belum ada riwayat penggabungan dokumen"
               : activeTab === "watermark"
               ? "Belum ada riwayat watermark/keamanan dokumen"
-              : activeTab === "ocr"
-              ? "Belum ada riwayat digitalisasi OCR"
               : "Belum ada riwayat pemrosesan dokumen"
           }
           description={
@@ -717,8 +741,6 @@ export default function RiwayatDokumenPage() {
               ? "Buka Merger"
               : activeTab === "watermark"
               ? "Buka Watermark"
-              : activeTab === "ocr"
-              ? "Buka Scan OCR"
               : "Mulai Konversi"
           }
           actionHref={
@@ -734,8 +756,6 @@ export default function RiwayatDokumenPage() {
               ? "/merger"
               : activeTab === "watermark"
               ? "/watermark"
-              : activeTab === "ocr"
-              ? "/scan"
               : "/converter"
           }
           onActionClick={searchQuery ? () => setSearchQuery("") : undefined}
@@ -764,7 +784,6 @@ export default function RiwayatDokumenPage() {
                 {activeTab === "" && <th>Kategori</th>}
                 {activeTab === "converter" && <th>Format Output</th>}
                 {activeTab === "splitter" && <th>Tipe Hasil</th>}
-                {activeTab === "ocr" && <th>Format Hasil</th>}
                 <th>Ukuran Semula</th>
                 <th>Ukuran Hasil</th>
                 {activeTab === "compressor" && <th>Efisiensi</th>}
@@ -782,7 +801,6 @@ export default function RiwayatDokumenPage() {
                 const isSplitter = doc.feature === "splitter";
                 const isMerger = doc.feature === "merger";
                 const isWatermark = doc.feature === "watermark";
-                const isOcr = doc.feature === "ocr";
 
                 const savings =
                   doc.original_size && doc.output_size
@@ -864,7 +882,6 @@ export default function RiwayatDokumenPage() {
                           {isSplitter && <Scissors size={12} />}
                           {isMerger && <Combine size={12} />}
                           {isWatermark && <ShieldCheck size={12} />}
-                          {isOcr && <ScanLine size={12} />}
                           {isConverter
                             ? "Converter"
                             : isCompressor
@@ -875,7 +892,7 @@ export default function RiwayatDokumenPage() {
                             ? "Merger"
                             : isWatermark
                             ? "Watermark"
-                            : "OCR / Scan"}
+                            : "Dokumen"}
                         </span>
                       </td>
                     )}
@@ -898,15 +915,6 @@ export default function RiwayatDokumenPage() {
                       </td>
                     )}
 
-                    {/* OCR Format Column */}
-                    {activeTab === "ocr" && (
-                      <td>
-                        <div style={{ display: "flex", gap: "4px" }}>
-                          {doc.output_docx && <span className="badge badge-neutral" style={{ fontSize: "11px" }}>DOCX</span>}
-                          {doc.output_pdf && <span className="badge badge-neutral" style={{ fontSize: "11px" }}>PDF</span>}
-                        </div>
-                      </td>
-                    )}
 
                     {/* Original Size */}
                     <td style={{ color: "var(--color-warm-gray)", whiteSpace: "nowrap" }}>
@@ -961,7 +969,7 @@ export default function RiwayatDokumenPage() {
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
                       <div style={{ display: "inline-flex", gap: "6px", alignItems: "center" }}>
                         {doc.status === "done" && (
-                          <a
+                          <DownloadLink
                             href={getDownloadUrl(doc.id)}
                             download
                             title="Unduh Berkas Hasil"
@@ -969,7 +977,7 @@ export default function RiwayatDokumenPage() {
                             style={{ padding: "5px 9px", color: "var(--color-cyan-edge)" }}
                           >
                             <Download size={13} />
-                          </a>
+                          </DownloadLink>
                         )}
 
                         <button
@@ -1003,6 +1011,93 @@ export default function RiwayatDokumenPage() {
               })}
             </tbody>
           </table>
+
+          {/* Pagination Controls */}
+          <div className="pagination-bar">
+            <div className="pagination-info">
+              <span>
+                Menampilkan <strong>{startItem}</strong>–<strong>{endItem}</strong> dari{" "}
+                <strong>{totalItems}</strong> dokumen
+              </span>
+
+              <div className="pagination-page-size">
+                <span>Tampilkan:</span>
+                <select
+                  className="pagination-select"
+                  value={pageSize}
+                  onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+                  aria-label="Pilih jumlah dokumen per halaman"
+                >
+                  <option value={10}>10 per halaman</option>
+                  <option value={20}>20 per halaman</option>
+                  <option value={50}>50 per halaman</option>
+                  <option value={100}>100 per halaman</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="pagination-controls">
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => handlePageChange(1)}
+                disabled={page <= 1 || loading}
+                title="Halaman Pertama"
+                aria-label="Halaman Pertama"
+              >
+                <ChevronsLeft size={14} />
+              </button>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => handlePageChange(page - 1)}
+                disabled={page <= 1 || loading}
+                title="Halaman Sebelumnya"
+                aria-label="Halaman Sebelumnya"
+              >
+                <ChevronLeft size={14} />
+              </button>
+
+              {getPageNumbers().map((pNum, idx) =>
+                pNum === "..." ? (
+                  <span key={`ellipsis-${idx}`} className="pagination-ellipsis">
+                    …
+                  </span>
+                ) : (
+                  <button
+                    key={`page-${pNum}`}
+                    type="button"
+                    className={`pagination-btn ${page === pNum ? "active" : ""}`}
+                    onClick={() => handlePageChange(Number(pNum))}
+                    disabled={loading}
+                  >
+                    {pNum}
+                  </button>
+                )
+              )}
+
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => handlePageChange(page + 1)}
+                disabled={page >= totalPages || loading}
+                title="Halaman Berikutnya"
+                aria-label="Halaman Berikutnya"
+              >
+                <ChevronRight size={14} />
+              </button>
+              <button
+                type="button"
+                className="pagination-btn"
+                onClick={() => handlePageChange(totalPages)}
+                disabled={page >= totalPages || loading}
+                title="Halaman Terakhir"
+                aria-label="Halaman Terakhir"
+              >
+                <ChevronsRight size={14} />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

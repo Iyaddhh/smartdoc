@@ -1,0 +1,45 @@
+# Python virtual environment
+.venv/
+.venv-*/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyc
+
+# Test files & cache
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs & storage (mounted as volumes)
+logs/
+storage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Git
+.git/
+.gitignore
+
+# Editor & OS
+.vscode/
+.idea/
+*.DS_Store
+Thumbs.db
+
+# Type stubs
+*.pyi
+
+# Alembic (keep alembic.ini and versions/ for migration)
+# But exclude pycache inside
+alembic/__pycache__/
+alembic/versions/__pycache__/

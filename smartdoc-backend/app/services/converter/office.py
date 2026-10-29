@@ -6,6 +6,7 @@ from pathlib import Path
 from app.core.logger import logger
 from app.core.concurrency import libreoffice_semaphore
 from app.core.config import settings
+from app.core.validators import validate_pdf_pages
 
 
 def _find_libreoffice_binary() -> str | None:
@@ -53,6 +54,7 @@ async def async_convert_office_to_pdf(input_path: str, output_path: str, timeout
 
                 await asyncio.wait_for(asyncio.to_thread(_run_docx2pdf), timeout=timeout_seconds)
                 if os.path.exists(output_path):
+                    await asyncio.to_thread(validate_pdf_pages, output_path)
                     logger.info(f"DOCX -> PDF via docx2pdf: {input_path} -> {output_path}")
                     return True
             except Exception as d2p_err:
@@ -103,6 +105,7 @@ async def async_convert_office_to_pdf(input_path: str, output_path: str, timeout
             if generated.exists() and str(generated) != output_path:
                 shutil.move(str(generated), output_path)
 
+            await asyncio.to_thread(validate_pdf_pages, output_path)
             logger.info(f"Office -> PDF sukses: {input_path} -> {output_path}")
             return True
 
@@ -119,13 +122,13 @@ async def async_convert_office_to_pdf(input_path: str, output_path: str, timeout
 
 
 def convert_office_to_pdf(input_path: str, output_path: str) -> bool:
-    """Synchronous fallback helper that runs the async converter."""
+    """Synchronous fallback helper that runs the async converter in a dedicated thread."""
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(lambda: asyncio.run(async_convert_office_to_pdf(input_path, output_path))).result()
-        return loop.run_until_complete(async_convert_office_to_pdf(input_path, output_path))
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            future = pool.submit(
+                lambda: asyncio.run(async_convert_office_to_pdf(input_path, output_path))
+            )
+            return future.result()
     except Exception:
-        return asyncio.run(async_convert_office_to_pdf(input_path, output_path))
+        return False

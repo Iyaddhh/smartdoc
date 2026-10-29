@@ -2,12 +2,15 @@
 .env
 .env.local
 .env*.local
+lint-results.json
+stage1_edit.py
 
 # Python / Backend (smartdoc-backend)
 __pycache__/
 *.py[cod]
 *$py.class
 .venv/
+.venv-*/
 venv/
 env/
 ENV/

@@ -1,10 +1,12 @@
 "use client";
 
+import DownloadLink from "@/components/DownloadLink";
+
 import { useState } from "react";
 import FileUpload from "@/components/FileUpload";
 import ProcessingModal from "@/components/ProcessingModal";
 import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
-import { useJobPolling } from "@/lib/useJobPolling";
+import { useJobPolling } from "@/hooks/useJobPolling";
 import { compressFile, getDownloadUrl, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
 import { Minimize2, Download, CheckCircle2, AlertCircle, RefreshCw, ArrowRight } from "lucide-react";
@@ -151,14 +153,14 @@ export default function CompressorPage() {
           </div>
 
           <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", marginTop: "4px" }}>
-            <a
+            <DownloadLink
               href={getDownloadUrl(docId)}
               download
               className="btn btn-primary btn-lg"
               style={{ flex: "1 1 200px" }}
             >
               <Download size={18} /> Unduh Berkas Hasil
-            </a>
+            </DownloadLink>
             <button
               className="btn btn-secondary btn-lg"
               onClick={resetAll}

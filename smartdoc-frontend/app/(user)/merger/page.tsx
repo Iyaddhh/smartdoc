@@ -1,11 +1,13 @@
 "use client";
 
+import DownloadLink from "@/components/DownloadLink";
+
 import { useState, useRef } from "react";
 import Link from "next/link";
 import FileUpload from "@/components/FileUpload";
 import ProcessingModal from "@/components/ProcessingModal";
 import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
-import { useJobPolling } from "@/lib/useJobPolling";
+import { useJobPolling } from "@/hooks/useJobPolling";
 import { mergeDocuments, getMergerDocInfo, getDownloadUrl, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
 import {
@@ -760,11 +762,11 @@ export default function MergerPage() {
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
-                <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
+                <DownloadLink href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
                   <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
                     <Download size={16} /> Unduh PDF Hasil
                   </button>
-                </a>
+                </DownloadLink>
                 <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
                   <RotateCcw size={15} /> Gabungkan Berkas Lain
                 </button>

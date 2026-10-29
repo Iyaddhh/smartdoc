@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useClientReady } from "@/hooks/useClientReady";
 import { JobStatus } from "@/lib/api";
 import { Loader2, Timer, Sparkles, XCircle, RefreshCw, FileOutput } from "lucide-react";
 
@@ -48,11 +49,8 @@ export default function ProcessingModal({
   onRetry,
   onClose,
 }: ProcessingModalProps) {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useClientReady();
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Lock body scroll when modal is open
   useEffect(() => {

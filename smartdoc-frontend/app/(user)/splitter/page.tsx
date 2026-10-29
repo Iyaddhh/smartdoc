@@ -1,10 +1,12 @@
 "use client";
 
+import DownloadLink from "@/components/DownloadLink";
+
 import { useState, useMemo } from "react";
 import FileUpload from "@/components/FileUpload";
 import ProcessingModal from "@/components/ProcessingModal";
 import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
-import { useJobPolling } from "@/lib/useJobPolling";
+import { useJobPolling } from "@/hooks/useJobPolling";
 import { splitDocument, getSplitDocumentInfo, getDownloadUrl, DocumentInfo, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
 import {
@@ -488,12 +490,12 @@ export default function SplitterPage() {
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
-                <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
+                <DownloadLink href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
                   <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
                     {splitMode === "extract_range" ? <Download size={16} /> : <Archive size={16} />}
                     {splitMode === "extract_range" ? "Unduh Hasil Ekstrak" : "Unduh Paket ZIP"}
                   </button>
-                </a>
+                </DownloadLink>
                 <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
                   <RotateCcw size={15} /> Pisahkan Berkas Lain
                 </button>

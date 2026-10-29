@@ -4,7 +4,7 @@ services:
       context: ./smartdoc-frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        API_INTERNAL_URL: http://backend:8000
     ports:
       - "3000:3000"
     depends_on:
@@ -17,9 +17,11 @@ services:
       context: ./smartdoc-backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     env_file:
       - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-smartdoc}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-smartdoc_db}
     volumes:
       - ./storage:/app/storage
       - ./logs:/app/logs
@@ -27,7 +29,7 @@ services:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/ready || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -43,15 +45,15 @@ services:
     image: postgres:16-alpine
     container_name: smartdoc-db
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"
     environment:
-      - POSTGRES_USER=smartdoc
-      - POSTGRES_PASSWORD=smartdoc_secret
-      - POSTGRES_DB=smartdoc_db
+      - POSTGRES_USER=${POSTGRES_USER:-smartdoc}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      - POSTGRES_DB=${POSTGRES_DB:-smartdoc_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U smartdoc -d smartdoc_db"]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 5s
       retries: 5

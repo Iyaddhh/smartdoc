@@ -17,11 +17,11 @@ def ok_response(data: Any = None, message: str = "Success", status_code: int = 2
     ).model_dump()
     return JSONResponse(content=payload, status_code=status_code)
 
-def fail_response(message: str = "Operation failed", error: Optional[str] = None, status_code: int = 400) -> JSONResponse:
+def fail_response(message: str = "Operation failed", error: Optional[str] = None, status_code: int = 400, headers: Optional[dict[str, str]] = None) -> JSONResponse:
     payload = APIResponse(
         success=False,
         data=None,
         message=message,
         error=error or message
     ).model_dump()
-    return JSONResponse(content=payload, status_code=status_code)
+    return JSONResponse(content=payload, status_code=status_code, headers=headers)

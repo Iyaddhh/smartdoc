@@ -3,6 +3,8 @@
 # 📑 SmartDoc
 ### *All-in-One Intelligent Document Management & Processing Workspace*
 
+Arsitektur folder dan katalog endpoint aktif tersedia di [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
 [![Next.js](https://img.shields.io/badge/Next.js-16.3-black?style=flat-square&logo=next.js)](https://nextjs.org/)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110-009688?style=flat-square&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
@@ -11,7 +13,7 @@
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://www.docker.com/)
 
 <p align="center">
-  Aplikasi manajemen dan pengolahan dokumen modern berbasis web dengan dukungan konversi lintas format, kompresi cerdas, pemisahan visual halaman, penggabungan & penyisipan dokumen, watermark & proteksi password AES, serta digitalisasi OCR berbasis template.
+  Aplikasi manajemen dan pengolahan dokumen berbasis web dengan konversi lintas format, kompresi, pemisahan halaman, penggabungan dokumen, watermark, proteksi password, dan riwayat dokumen privat.
 </p>
 
 </div>
@@ -42,9 +44,6 @@
 - **Live Visual Canvas**: Pratinjau kanvas interaktif merespons perubahan teks dan rotasi secara *real-time*.
 - **Proteksi Kata Sandi (AES-128)**: Kunci berkas PDF dengan enkripsi password kuat sehingga aman didistribusikan.
 
-### 🔍 6. OCR & Digitalisasi Berbasis Template
-- Pindai dokumen formulir/surat fisik dan petakan koordinat zona data secara otomatis ke template digital Word (.docx) dan PDF.
-
 ### 📜 7. Riwayat Dokumen Terpadu (*Document History*)
 - Daftar lengkap seluruh arsip berkas hasil pemrosesan dengan filter tab kategori, pencarian instan, metrik efisiensi kompresi, ganti nama (*rename*), dan unduh langsung.
 
@@ -61,18 +60,18 @@ smartdoc/
 ├── smartdoc-frontend/                 # Frontend Next.js 16 (App Router + TypeScript)
 │   ├── app/
 │   │   ├── (user)/                    # Dashboard, Converter, Compressor, Splitter, Merger, Watermark, Riwayat
-│   │   ├── (admin)/                   # Manajemen Template OCR
 │   │   ├── layout.tsx                 # Root layout & font optimization
 │   │   └── globals.css                # Design tokens, variables & components
 │   ├── components/                    # FileUpload (Page 1 preview), Sidebar, JobProgressCard, Toast
-│   ├── lib/                           # API client wrapper & useJobPolling hook
+│   ├── hooks/                         # Job polling & authenticated file preview
+│   ├── lib/api/                       # API client modules, transport & contracts
 │   └── next.config.ts                 # Next.js build configuration
 │
 ├── smartdoc-backend/                  # Backend FastAPI (Python 3.11+ Async)
 │   ├── app/
 │   │   ├── api/                       # API routes (converter, compressor, splitter, merger, watermark, documents)
 │   │   ├── services/                  # Document engines (LibreOffice, Ghostscript, PyPDF, ReportLab, Poppler)
-│   │   ├── models/                    # SQLAlchemy ORM Models (Document, Job, Template)
+│   │   ├── models/                    # SQLAlchemy ORM Models (User, Document, Job)
 │   │   ├── core/                      # Config, Logger, Response helpers, Validators, Cleanup TTL
 │   │   └── main.py                    # FastAPI application setup & lifespan
 │   ├── storage/                       # Direktori penyimpanan lokal (originals, outputs, temp)
@@ -150,6 +149,16 @@ npm run dev
 Buka browser Anda di `http://localhost:3000`.
 
 ---
+
+## Verifikasi pengembangan
+
+Landing page `/` menyediakan tools guest tanpa login atau riwayat database. Form tools tertutup sampai dipilih. Workspace `/dashboard` memerlukan login user atau admin; logout mencabut semua token akun. Berkas guest hanya disimpan sementara selama pemrosesan dan dihapus setelah respons atau kegagalan.
+
+Frontend: jalankan `npm run lint`, `npm test`, dan `npm run build` dari `smartdoc-frontend`.
+
+Backend: jalankan `.venv\Scripts\python.exe run_tests.py -q` dari `smartdoc-backend`. Runner membuat database PostgreSQL dan storage sementara, menjalankan migrasi dari awal, lalu membersihkannya. Akun PostgreSQL lokal yang dikonfigurasi memerlukan izin CREATE DATABASE. Gunakan runner ini untuk tes integrasi agar data workspace tidak terpengaruh.
+
+Provisioning akun memakai `python seed_user.py --username NAME --email EMAIL --role admin`; password diminta tanpa ditampilkan. Tidak ada akun admin yang otomatis dibuat. Konfigurasi refresh token/cookie masih disiapkan; refresh otomatis dan opsi Ingat saya belum tersedia.
 
 ## ⚙️ Variabel Lingkungan (Environment Variables)
 

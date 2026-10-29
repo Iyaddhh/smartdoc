@@ -4,6 +4,8 @@ from pathlib import Path
 from PIL import Image
 import docx
 from app.core.logger import logger
+from app.core.config import settings
+from app.core.validators import validate_pdf_pages
 
 
 def _cleanup_docx_formatting(docx_path: str):
@@ -138,11 +140,16 @@ def pdf_to_images(input_path: str, output_dir: str, fmt: str = "jpg", dpi: int =
     """
     try:
         from pdf2image import convert_from_path
-        pages = convert_from_path(input_path, dpi=dpi)
+        total_pages = validate_pdf_pages(input_path)
         os.makedirs(output_dir, exist_ok=True)
         paths = []
         fmt_clean = "jpg" if fmt.lower() in ("jpg", "jpeg") else "png"
-        for i, page in enumerate(pages):
+        for i in range(total_pages):
+            # Render one page at a time rather than retaining every decoded page in RAM.
+            pages = convert_from_path(input_path, dpi=dpi, first_page=i + 1, last_page=i + 1, timeout=settings.JOB_TIMEOUT_SECONDS)
+            if len(pages) != 1:
+                raise RuntimeError("Gagal merender halaman PDF.")
+            page = pages[0]
             try:
                 filename = f"page_{i + 1:03d}.{fmt_clean}"
                 out_path = os.path.join(output_dir, filename)

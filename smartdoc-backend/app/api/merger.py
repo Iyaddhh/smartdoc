@@ -1,17 +1,20 @@
+from app.core.limiter import limiter
+from typing import Literal
 import os
 import uuid
 import asyncio
-from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
-from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
+from fastapi import Request, APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db, AsyncSessionLocal
 from app.models.document import Document
 from app.models.job import Job
+from app.models.user import User
 from app.core.config import settings
-from app.core.concurrency import job_semaphore
+from app.core.concurrency import job_semaphore, preview_capacity
+from app.core.datetime_utils import utc_now
 from app.core.response import ok_response, fail_response
 from app.core.logger import logger
 from app.core.validators import (
@@ -21,8 +24,13 @@ from app.core.validators import (
 from app.services.merger import merge_documents, insert_document
 from app.services.splitter import get_pdf_page_count
 from app.services.converter import async_convert_office_to_pdf
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/merger", tags=["Merger"])
+router = APIRouter(
+    prefix="/api/merger",
+    tags=["Merger"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 async def _run_merge_job(
@@ -40,7 +48,7 @@ async def _run_merge_job(
                 job = await db.get(Job, uuid.UUID(job_id))
                 job.status = "processing"
                 job.progress = 30
-                job.started_at = datetime.utcnow()
+                job.started_at = utc_now()
                 await db.commit()
 
                 success = False
@@ -70,7 +78,7 @@ async def _run_merge_job(
                 job = await db.get(Job, uuid.UUID(job_id))
                 job.status = "done"
                 job.progress = 100
-                job.finished_at = datetime.utcnow()
+                job.finished_at = utc_now()
                 await db.commit()
 
                 logger.info(f"[job:{job_id}] Penggabungan dokumen sukses -> {output_path}")
@@ -81,21 +89,28 @@ async def _run_merge_job(
                 if job:
                     job.status = "failed"
                     job.error = str(e)
-                    job.finished_at = datetime.utcnow()
+                    job.finished_at = utc_now()
                 doc = await db.get(Document, uuid.UUID(document_id))
                 if doc:
                     doc.status = "failed"
+                    # Cleanup semua file input jika job gagal
+                    for p in input_paths:
+                        if p and os.path.exists(p):
+                            try:
+                                os.remove(p)
+                            except Exception:
+                                pass
                 await db.commit()
 
 
-@router.post("/info")
-async def get_merger_document_info(file: UploadFile = File(...)):
+@router.post("/info", dependencies=[Depends(preview_capacity)])
+@limiter.shared_limit(settings.PREVIEW_RATE_LIMIT, scope="document-preview", override_defaults=False)
+async def get_merger_document_info(request: Request, file: UploadFile = File(...)):
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_MERGE_EXTENSIONS:
         return fail_response(f"Format {ext} tidak didukung.", status_code=400)
 
     content = await validate_and_read_upload(file, ext)
-    validate_file_magic_bytes(content, ext)
     if ext.lower() in (".jpg", ".jpeg", ".png"):
         validate_image_dimensions(content)
 
@@ -136,14 +151,17 @@ async def get_merger_document_info(file: UploadFile = File(...)):
                     pass
 
 
-@router.post("/process")
+@router.post("/process", status_code=202)
+@limiter.shared_limit(settings.PROCESS_RATE_LIMIT, scope="document-process", override_defaults=False)
 async def merge_files(
     background_tasks: BackgroundTasks,
+    request: Request,
     files: List[UploadFile] = File(...),
-    merge_mode: str = Form("sequence", description="'sequence' atau 'insert'"),
-    insert_position: str = Form("end", description="'start', 'end', 'custom'"),
-    after_page: int = Form(1, description="Nomor halaman setelahnya jika insert_position='custom'"),
+    merge_mode: Literal["sequence", "insert"] = Form("sequence", description="'sequence' atau 'insert'"),
+    insert_position: Literal["start", "end", "custom"] = Form("end", description="'start', 'end', 'custom'"),
+    after_page: int = Form(1, ge=1, description="Nomor halaman setelahnya jika insert_position='custom'"),
     custom_title: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     if not files or len(files) < 2:
@@ -164,7 +182,6 @@ async def merge_files(
             )
 
         content = await validate_and_read_upload(file, ext)
-        validate_file_magic_bytes(content, ext)
         if ext.lower() in (".jpg", ".jpeg", ".png"):
             validate_image_dimensions(content)
         total_input_size += len(content)
@@ -189,6 +206,7 @@ async def merge_files(
 
     doc = Document(
         id=doc_id,
+        user_id=current_user.id,
         feature="merger",
         custom_name=user_name,
         original_file=input_paths[0],

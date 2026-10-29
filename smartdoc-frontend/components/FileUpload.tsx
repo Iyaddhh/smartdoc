@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, DragEvent } from "react";
 import { createPortal } from "react-dom";
+import { useClientReady } from "@/hooks/useClientReady";
 import {
   Upload,
   X,
@@ -57,7 +58,7 @@ export default function FileUpload({
   const [isValidating, setIsValidating] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [mounted, setMounted] = useState(false);
+  const mounted = useClientReady();
 
   // Zoom Modal State
   const [isZoomed, setIsZoomed] = useState(false);
@@ -66,9 +67,6 @@ export default function FileUpload({
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   // Handle ESC key & lock body scroll when modal is open
   useEffect(() => {
@@ -92,7 +90,7 @@ export default function FileUpload({
 
   const MAX_DOC_MB = 35;
   const MAX_IMAGE_MB = 12;
-  const MAX_IMAGE_DIM_PX = 6000;
+  const MAX_IMAGE_DIM_PX = 10000;
 
   const getMaxMbForFile = (filename: string): number => {
     const ext = filename.split(".").pop()?.toLowerCase() || "";

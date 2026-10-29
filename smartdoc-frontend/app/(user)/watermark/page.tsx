@@ -1,11 +1,13 @@
 "use client";
 
+import DownloadLink from "@/components/DownloadLink";
+
 import { useState } from "react";
 import Link from "next/link";
 import FileUpload from "@/components/FileUpload";
 import ProcessingModal from "@/components/ProcessingModal";
 import FeatureGuideModal, { GuideButton } from "@/components/FeatureGuideModal";
-import { useJobPolling } from "@/lib/useJobPolling";
+import { useJobPolling } from "@/hooks/useJobPolling";
 import { watermarkDocument, getDownloadUrl, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
 import {
@@ -33,6 +35,7 @@ export default function WatermarkPage() {
   const [file, setFile] = useState<File | null>(null);
 
   // Watermark Settings
+  const [enableWatermark, setEnableWatermark] = useState(true);
   const [watermarkText, setWatermarkText] = useState("CONFIDENTIAL");
   const [opacity, setOpacity] = useState(0.25);
   const [angle, setAngle] = useState(45);
@@ -57,7 +60,13 @@ export default function WatermarkPage() {
     onDone: (j) => {
       setDoneJob(j);
       setIsSubmitting(false);
-      showToast("success", "Watermark & keamanan dokumen berhasil diterapkan!", "Proses Selesai");
+      showToast(
+        "success",
+        !enableWatermark && enablePassword
+          ? "Dokumen berhasil dikunci dengan kata sandi!"
+          : "Watermark & keamanan dokumen berhasil diterapkan!",
+        "Proses Selesai"
+      );
     },
     onFailed: (j) => {
       setIsSubmitting(false);
@@ -81,9 +90,10 @@ export default function WatermarkPage() {
       return;
     }
 
-    if (!watermarkText.trim() && (!enablePassword || !password.trim())) {
-      setSubmitError("Harap isi teks watermark atau aktifkan kata sandi penguncian.");
-      showToast("warning", "Isi teks watermark atau password.", "Validasi");
+    const finalWatermarkText = enableWatermark ? watermarkText.trim() : "";
+    if (!finalWatermarkText && (!enablePassword || !password.trim())) {
+      setSubmitError("Harap aktifkan teks watermark atau masukkan kata sandi penguncian.");
+      showToast("warning", "Pilih minimal watermark atau kata sandi.", "Validasi");
       return;
     }
 
@@ -93,7 +103,7 @@ export default function WatermarkPage() {
 
     const res = await watermarkDocument({
       file,
-      watermarkText: watermarkText.trim() || undefined,
+      watermarkText: finalWatermarkText || undefined,
       opacity,
       angle,
       fontSize,
@@ -121,6 +131,7 @@ export default function WatermarkPage() {
     setSubmitError(null);
     setPassword("");
     setEnablePassword(false);
+    setEnableWatermark(true);
   };
 
   return (
@@ -163,137 +174,176 @@ export default function WatermarkPage() {
                   2. Pengaturan Cap Air (Watermark)
                 </h3>
               </div>
-              {isFileLoading && (
-                <span style={{ fontSize: "11.5px", color: "var(--color-cyan-edge)", display: "flex", alignItems: "center", gap: "4px" }}>
-                  <span className="animate-spin">⟳</span> Menyiapkan...
-                </span>
-              )}
-            </div>
-
-            {/* Watermark Text Input */}
-            <div>
-              <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
-                Teks Watermark:
-              </label>
-              <input
-                className="input"
-                value={watermarkText}
-                onChange={(e) => setWatermarkText(e.target.value)}
-                disabled={!!jobId || isFileLoading}
-                placeholder="cth: CONFIDENTIAL / RAHASIA"
-                style={{ fontSize: "13px" }}
-              />
-              {/* Presets */}
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
-                {PRESET_TEXTS.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => !jobId && !isFileLoading && setWatermarkText(t)}
-                    disabled={!!jobId || isFileLoading}
-                    style={{
-                      fontSize: "11px",
-                      padding: "2px 8px",
-                      borderRadius: "var(--radius-tags)",
-                      background: watermarkText === t ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
-                      color: watermarkText === t ? "var(--color-pure-white)" : "var(--color-warm-gray)",
-                      border: "1px solid var(--color-stone-border)",
-                      cursor: (jobId || isFileLoading) ? "default" : "pointer",
-                      transition: "var(--transition-fast)",
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                {isFileLoading && (
+                  <span style={{ fontSize: "11.5px", color: "var(--color-cyan-edge)", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span className="animate-spin">⟳</span> Menyiapkan...
+                  </span>
+                )}
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", cursor: "pointer", color: "var(--color-ink-black)", fontWeight: 500 }}>
+                  <input
+                    type="checkbox"
+                    checked={enableWatermark}
+                    onChange={(e) => {
+                      const val = e.target.checked;
+                      setEnableWatermark(val);
+                      if (!val && !enablePassword) {
+                        setEnablePassword(true);
+                      }
                     }}
-                  >
-                    {t}
-                  </button>
-                ))}
+                    disabled={!!jobId || isFileLoading}
+                    style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--color-cyan-edge)" }}
+                  />
+                  <span>Gunakan Watermark</span>
+                </label>
               </div>
             </div>
 
-            {/* Opacity Slider */}
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                <label style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-ink-black)" }}>
-                  Transparansi (Opasitas):
-                </label>
-                <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-cyan-edge)" }}>
-                  {Math.round(opacity * 100)}%
-                </span>
+            {!enableWatermark ? (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  background: "var(--color-stone-canvas)",
+                  border: "1px dashed var(--color-stone-border)",
+                  borderRadius: "var(--radius-cards)",
+                  fontSize: "12.5px",
+                  color: "var(--color-warm-gray)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                }}
+              >
+                <span>ℹ️</span>
+                <span>Cap air dinonaktifkan. Berkas akan diproses murni tanpa teks watermark.</span>
               </div>
-              <input
-                type="range"
-                min={0.1}
-                max={0.8}
-                step={0.05}
-                value={opacity}
-                onChange={(e) => setOpacity(parseFloat(e.target.value))}
-                disabled={!!jobId || isFileLoading}
-                style={{ width: "100%", accentColor: "var(--color-cyan-edge)" }}
-              />
-            </div>
-
-            {/* Angle & Color Selection */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-              {/* Angle */}
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
-                  Sudut Rotasi:
-                </label>
-                <div style={{ display: "flex", gap: "6px" }}>
-                  {[
-                    { label: "45°", val: 45 },
-                    { label: "0°", val: 0 },
-                    { label: "-45°", val: -45 },
-                  ].map((item) => (
-                    <button
-                      key={item.val}
-                      type="button"
-                      onClick={() => !jobId && !isFileLoading && setAngle(item.val)}
-                      disabled={!!jobId || isFileLoading}
-                      style={{
-                        flex: 1,
-                        padding: "4px 8px",
-                        fontSize: "12px",
-                        fontWeight: 500,
-                        borderRadius: "var(--radius-inputs)",
-                        background: angle === item.val ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
-                        color: angle === item.val ? "var(--color-pure-white)" : "var(--color-warm-gray)",
-                        border: "1px solid var(--color-stone-border)",
-                        cursor: (jobId || isFileLoading) ? "default" : "pointer",
-                      }}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
+            ) : (
+              <>
+                {/* Watermark Text Input */}
+                <div>
+                  <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                    Teks Watermark:
+                  </label>
+                  <input
+                    className="input"
+                    value={watermarkText}
+                    onChange={(e) => setWatermarkText(e.target.value)}
+                    disabled={!!jobId || isFileLoading}
+                    placeholder="cth: CONFIDENTIAL / RAHASIA"
+                    style={{ fontSize: "13px" }}
+                  />
+                  {/* Presets */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginTop: "8px" }}>
+                    {PRESET_TEXTS.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => !jobId && !isFileLoading && setWatermarkText(t)}
+                        disabled={!!jobId || isFileLoading}
+                        style={{
+                          fontSize: "11px",
+                          padding: "2px 8px",
+                          borderRadius: "var(--radius-tags)",
+                          background: watermarkText === t ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
+                          color: watermarkText === t ? "var(--color-pure-white)" : "var(--color-warm-gray)",
+                          border: "1px solid var(--color-stone-border)",
+                          cursor: (jobId || isFileLoading) ? "default" : "pointer",
+                          transition: "var(--transition-fast)",
+                        }}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* Color Selection */}
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
-                  Warna Cap:
-                </label>
-                <div style={{ display: "flex", gap: "8px", alignItems: "center", height: "30px" }}>
-                  {COLOR_OPTIONS.map((c) => (
-                    <button
-                      key={c.hex}
-                      type="button"
-                      onClick={() => !jobId && !isFileLoading && setColorHex(c.hex)}
-                      disabled={!!jobId || isFileLoading}
-                      title={c.label}
-                      style={{
-                        width: 22,
-                        height: 22,
-                        borderRadius: "50%",
-                        background: c.hex,
-                        border: colorHex === c.hex ? "2px solid var(--color-ink-black)" : "1px solid rgba(0,0,0,0.15)",
-                        transform: colorHex === c.hex ? "scale(1.15)" : "scale(1)",
-                        cursor: (jobId || isFileLoading) ? "default" : "pointer",
-                        transition: "var(--transition-fast)",
-                      }}
-                    />
-                  ))}
+                {/* Opacity Slider */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
+                    <label style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-ink-black)" }}>
+                      Transparansi (Opasitas):
+                    </label>
+                    <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-cyan-edge)" }}>
+                      {Math.round(opacity * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.1}
+                    max={0.8}
+                    step={0.05}
+                    value={opacity}
+                    onChange={(e) => setOpacity(parseFloat(e.target.value))}
+                    disabled={!!jobId || isFileLoading}
+                    style={{ width: "100%", accentColor: "var(--color-cyan-edge)" }}
+                  />
                 </div>
-              </div>
-            </div>
+
+                {/* Angle & Color Selection */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  {/* Angle */}
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                      Sudut Rotasi:
+                    </label>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      {[
+                        { label: "45°", val: 45 },
+                        { label: "0°", val: 0 },
+                        { label: "-45°", val: -45 },
+                      ].map((item) => (
+                        <button
+                          key={item.val}
+                          type="button"
+                          onClick={() => !jobId && !isFileLoading && setAngle(item.val)}
+                          disabled={!!jobId || isFileLoading}
+                          style={{
+                            flex: 1,
+                            padding: "4px 8px",
+                            fontSize: "12px",
+                            fontWeight: 500,
+                            borderRadius: "var(--radius-inputs)",
+                            background: angle === item.val ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
+                            color: angle === item.val ? "var(--color-pure-white)" : "var(--color-warm-gray)",
+                            border: "1px solid var(--color-stone-border)",
+                            cursor: (jobId || isFileLoading) ? "default" : "pointer",
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Color Selection */}
+                  <div>
+                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                      Warna Cap:
+                    </label>
+                    <div style={{ display: "flex", gap: "8px", alignItems: "center", height: "30px" }}>
+                      {COLOR_OPTIONS.map((c) => (
+                        <button
+                          key={c.hex}
+                          type="button"
+                          onClick={() => !jobId && !isFileLoading && setColorHex(c.hex)}
+                          disabled={!!jobId || isFileLoading}
+                          title={c.label}
+                          style={{
+                            width: 22,
+                            height: 22,
+                            borderRadius: "50%",
+                            background: c.hex,
+                            border: colorHex === c.hex ? "2px solid var(--color-ink-black)" : "1px solid rgba(0,0,0,0.15)",
+                            transform: colorHex === c.hex ? "scale(1.15)" : "scale(1)",
+                            cursor: (jobId || isFileLoading) ? "default" : "pointer",
+                            transition: "var(--transition-fast)",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Step 3: Password Security */}
@@ -372,11 +422,19 @@ export default function WatermarkPage() {
                 </>
               ) : isSubmitting ? (
                 <>
-                  <span className="animate-spin">⟳</span> Menerapkan Watermark...
+                  <span className="animate-spin">⟳</span> Memproses Dokumen...
+                </>
+              ) : !enableWatermark && enablePassword ? (
+                <>
+                  <Lock size={16} /> Kunci PDF dengan Kata Sandi
+                </>
+              ) : enableWatermark && enablePassword ? (
+                <>
+                  <ShieldCheck size={16} /> Terapkan Watermark & Kata Sandi
                 </>
               ) : (
                 <>
-                  <ShieldCheck size={16} /> Terapkan Watermark & Keamanan
+                  <ShieldCheck size={16} /> Terapkan Watermark
                 </>
               )}
             </button>
@@ -396,7 +454,9 @@ export default function WatermarkPage() {
                     Dokumen Berhasil Diamankan!
                   </h3>
                   <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
-                    {enablePassword && password
+                    {enablePassword && !enableWatermark
+                      ? "Enkripsi kata sandi (tanpa watermark) telah berhasil diterapkan."
+                      : enablePassword && enableWatermark
                       ? "Watermark dan enkripsi kata sandi telah diterapkan."
                       : "Cap air visual telah disematkan ke seluruh halaman dokumen."}
                   </p>
@@ -404,11 +464,11 @@ export default function WatermarkPage() {
               </div>
 
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "4px" }}>
-                <a href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
+                <DownloadLink href={getDownloadUrl(documentId)} download style={{ flex: "1 1 auto" }}>
                   <button className="btn btn-primary btn-lg" style={{ width: "100%" }}>
                     <Download size={16} /> Unduh Berkas Terproteksi
                   </button>
-                </a>
+                </DownloadLink>
                 <button className="btn btn-secondary btn-lg" onClick={handleReset} style={{ flex: "1 1 auto" }}>
                   <RotateCcw size={15} /> Proses Dokumen Lain
                 </button>
@@ -462,7 +522,7 @@ export default function WatermarkPage() {
                 <div style={{ width: "60%", height: "6px", background: "#f1f5f9", borderRadius: "3px" }} />
 
                 {/* Overlaid Dynamic Watermark */}
-                {watermarkText.trim() && (
+                {enableWatermark && watermarkText.trim() && (
                   <div
                     style={{
                       position: "absolute",

@@ -1,16 +1,18 @@
+from app.core.limiter import limiter
 import os
 import uuid
 import shutil
 import zipfile
 import asyncio
-from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
+from fastapi import Request, APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.datetime_utils import utc_now
 
 from app.db.base import get_db, AsyncSessionLocal
 from app.models.document import Document
 from app.models.job import Job
+from app.models.user import User
 from app.core.config import settings
 from app.core.concurrency import job_semaphore
 from app.core.response import ok_response, fail_response
@@ -22,8 +24,13 @@ from app.core.validators import (
 from app.services.converter import (
     async_convert_office_to_pdf, pdf_to_word, pdf_to_images, images_to_pdf
 )
+from app.core.security import get_current_user
 
-router = APIRouter(prefix="/api/converter", tags=["Converter"])
+router = APIRouter(
+    prefix="/api/converter",
+    tags=["Converter"],
+    dependencies=[Depends(get_current_user)],
+)
 
 from typing import List, Optional
 
@@ -56,7 +63,7 @@ async def _run_convert_job(
                 job = await db.get(Job, uuid.UUID(job_id))
                 job.status = "processing"
                 job.progress = 25
-                job.started_at = datetime.utcnow()
+                job.started_at = utc_now()
                 await db.commit()
 
                 success = False
@@ -107,7 +114,7 @@ async def _run_convert_job(
                 job.status = "done" if success else "failed"
                 job.progress = 100 if success else job.progress
                 job.error = None if success else "Konversi gagal. Cek log untuk detail."
-                job.finished_at = datetime.utcnow()
+                job.finished_at = utc_now()
                 await db.commit()
 
                 doc = await db.get(Document, uuid.UUID(document_id))
@@ -128,21 +135,31 @@ async def _run_convert_job(
                     job = await db.get(Job, uuid.UUID(job_id))
                     job.status = "failed"
                     job.error = str(e)
-                    job.finished_at = datetime.utcnow()
+                    job.finished_at = utc_now()
                     doc = await db.get(Document, uuid.UUID(document_id))
                     doc.status = "failed"
+                    # Cleanup semua file input jika job gagal
+                    for p in input_paths:
+                        if p and os.path.exists(p):
+                            try:
+                                os.remove(p)
+                            except Exception:
+                                pass
                     await db.commit()
                 except Exception:
                     pass
 
 
-@router.post("/process")
+@router.post("/process", status_code=202)
+@limiter.shared_limit(settings.PROCESS_RATE_LIMIT, scope="document-process", override_defaults=False)
 async def convert_file(
     background_tasks: BackgroundTasks,
+    request: Request,
     files: List[UploadFile] = File(default=[]),
     file: Optional[UploadFile] = File(default=None),
     output_format: str = Form(...),
     custom_title: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     upload_list: List[UploadFile] = []
@@ -153,6 +170,14 @@ async def convert_file(
 
     if not upload_list:
         return fail_response("Harap pilih setidaknya satu berkas untuk dikonversi.", status_code=400)
+
+    output_format = output_format.lower()
+    output_format = {"jpeg": "jpg", "doc": "docx"}.get(output_format, output_format)
+    for upload in upload_list:
+        ext = validate_file_extension(upload.filename, ALLOWED_CONVERTER_EXTENSIONS)
+        allowed = {"docx", "jpg", "png"} if ext == ".pdf" else {"pdf"}
+        if output_format not in allowed:
+            return fail_response(f"Konversi {ext} ke {output_format} tidak didukung.", status_code=400)
 
     # Validasi multi-file
     if len(upload_list) > 1:
@@ -182,7 +207,6 @@ async def convert_file(
     for f in upload_list:
         input_ext = validate_file_extension(f.filename, ALLOWED_CONVERTER_EXTENSIONS)
         content = await validate_and_read_upload(f, input_ext)
-        validate_file_magic_bytes(content, input_ext)
         if input_ext.lower() in IMAGE_EXTS:
             validate_image_dimensions(content)
 
@@ -233,6 +257,7 @@ async def convert_file(
 
     doc = Document(
         id=doc_id,
+        user_id=current_user.id,
         feature="converter",
         custom_name=custom_output_name,
         original_file=input_paths[0],

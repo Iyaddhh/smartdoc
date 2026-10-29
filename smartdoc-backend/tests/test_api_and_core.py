@@ -57,17 +57,15 @@ def test_magic_bytes_valid_and_invalid():
 
 
 @pytest.mark.asyncio
-async def test_global_exception_handler_format_on_422():
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        # Send empty POST without required multipart fields to trigger 422 RequestValidationError
-        response = await client.post("/api/converter/process")
-        assert response.status_code == 422
-        data = response.json()
-        assert data["success"] is False
-        assert data["data"] is None
-        assert "message" in data
-        assert "error" in data
+async def test_global_exception_handler_format_on_422(auth_client: AsyncClient):
+    # Send empty POST without required multipart fields to trigger 422 RequestValidationError
+    response = await auth_client.post("/api/converter/process")
+    assert response.status_code == 422
+    data = response.json()
+    assert data["success"] is False
+    assert data["data"] is None
+    assert "message" in data
+    assert "error" in data
 
 
 def test_categorized_size_limits_config():
@@ -129,20 +127,33 @@ def test_validate_image_dimensions_exceeds_limit_413():
     from PIL import Image
     from app.core.validators import validate_image_dimensions
 
-    # Create image exceeding 6000px (e.g. 6001 x 100 px)
-    img = Image.new("RGB", (6001, 100), color="blue")
+    # Create image exceeding 10000px (e.g. 10001 x 100 px)
+    img = Image.new("RGB", (10001, 100), color="blue")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     img_bytes = buf.getvalue()
 
     with pytest.raises(HTTPException) as exc_info:
-        validate_image_dimensions(img_bytes, max_dimension=6000)
+        validate_image_dimensions(img_bytes, max_dimension=10000)
     assert exc_info.value.status_code == 413
-    assert "melebihi batas maksimum 6000px" in exc_info.value.detail
+    assert "melebihi batas maksimum 10000px" in exc_info.value.detail
 
-    # Create valid dimension image (e.g. 1920 x 1080 px)
-    valid_img = Image.new("RGB", (1920, 1080), color="green")
+    # Create valid dimension image (e.g. 1920 x 8107 px)
+    valid_img = Image.new("RGB", (1920, 8107), color="green")
     valid_buf = io.BytesIO()
     valid_img.save(valid_buf, format="PNG")
-    validate_image_dimensions(valid_buf.getvalue(), max_dimension=6000)
+    validate_image_dimensions(valid_buf.getvalue(), max_dimension=10000)
 
+
+@pytest.mark.asyncio
+async def test_rate_limiter_blocks_excessive_logins():
+    """Memvalidasi bahwa Rate Limiter memblokir request ke-16 ke /api/auth/login dengan HTTP 429."""
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        responses = []
+        for i in range(16):
+            res = await client.post("/api/auth/login", data={"username": "fake", "password": "wrong"})
+            responses.append(res.status_code)
+
+        # The 16th request should be rate-limited (HTTP 429)
+        assert 429 in responses, f"Expected 429 in responses, got: {responses}"

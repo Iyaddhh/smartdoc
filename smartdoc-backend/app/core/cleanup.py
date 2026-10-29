@@ -22,17 +22,26 @@ def clean_expired_temp_files(ttl_hours: int = 24) -> int:
     for d in temp_dirs:
         if not os.path.exists(d):
             continue
-        for entry in os.scandir(d):
-            if entry.name == ".gitkeep":
-                continue
-            if entry.is_file():
+        for root, dirs, files in os.walk(d, topdown=False):
+            for file in files:
+                if file == ".gitkeep":
+                    continue
+                file_path = os.path.join(root, file)
                 try:
-                    file_age = now - entry.stat().st_mtime
+                    file_age = now - os.path.getmtime(file_path)
                     if file_age > ttl_seconds:
-                        os.remove(entry.path)
+                        os.remove(file_path)
                         cleaned_count += 1
                 except Exception as e:
-                    logger.warning(f"Gagal menghapus temp file {entry.path}: {e}")
+                    logger.warning(f"Gagal menghapus temp file {file_path}: {e}")
+
+            for dir_name in dirs:
+                dir_path = os.path.join(root, dir_name)
+                try:
+                    if not os.listdir(dir_path) and (now - os.path.getmtime(dir_path)) > ttl_seconds:
+                        os.rmdir(dir_path)
+                except Exception:
+                    pass
 
     if cleaned_count > 0:
         logger.info(f"Auto-cleanup: {cleaned_count} file temporary kadaluarsa berhasil dibersihkan.")
