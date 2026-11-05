@@ -1,6 +1,7 @@
 import os
 import shutil
 import asyncio
+from app.core.workers import run_engine
 from pathlib import Path
 from pypdf import PdfWriter, PdfReader
 from app.core.logger import logger
@@ -46,6 +47,11 @@ async def async_compress_pdf(input_path: str, output_path: str, dpi: int | None 
             )
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+            except asyncio.CancelledError:
+                if proc.returncode is None:
+                    proc.kill()
+                await proc.wait()
+                raise
             except asyncio.TimeoutError:
                 try:
                     proc.kill()
@@ -73,20 +79,10 @@ async def async_compress_pdf(input_path: str, output_path: str, dpi: int | None 
             logger.warning(f"Ghostscript execution failed ({e}), fallback ke pypdf...")
 
     # Fallback to pypdf in worker thread
-    def _pypdf_compress():
-        reader = PdfReader(input_path)
-        writer = PdfWriter()
-        for page in reader.pages:
-            p = writer.add_page(page)
-            try:
-                p.compress_content_streams()
-            except Exception:
-                pass
-        with open(output_path, "wb") as f:
-            writer.write(f)
-
     try:
-        await asyncio.wait_for(asyncio.to_thread(_pypdf_compress), timeout=timeout_seconds)
+        await run_engine(_pypdf_compress, input_path, output_path, timeout=timeout_seconds)
+    except TimeoutError:
+        raise
     except Exception as pypdf_err:
         logger.error(f"pypdf compression error: {pypdf_err}")
         shutil.copy2(input_path, output_path)
@@ -113,3 +109,16 @@ def compress_pdf(input_path: str, output_path: str, dpi: int = 150) -> bool:
         return loop.run_until_complete(async_compress_pdf(input_path, output_path, dpi=dpi))
     except Exception:
         return asyncio.run(async_compress_pdf(input_path, output_path, dpi=dpi))
+
+
+def _pypdf_compress(input_path, output_path):
+    reader = PdfReader(input_path)
+    writer = PdfWriter()
+    for page in reader.pages:
+        p = writer.add_page(page)
+        try:
+            p.compress_content_streams()
+        except Exception:
+            pass
+    with open(output_path, "wb") as f:
+        writer.write(f)

@@ -38,8 +38,8 @@ def create_text_watermark_pdf(
     c = canvas.Canvas(buf, pagesize=(width, height))
 
     # Set transparency
-    c.setFillAlpha(max(0.05, min(0.9, opacity)))
-    c.setStrokeAlpha(max(0.05, min(0.9, opacity)))
+    c.setFillAlpha(max(0.0, min(1.0, opacity)))
+    c.setStrokeAlpha(max(0.0, min(1.0, opacity)))
 
     # Set font & color
     c.setFont("Helvetica-Bold", font_size)
@@ -110,10 +110,10 @@ def apply_watermark_and_security(
             writer.add_page(page)
 
         # 3. Tambahkan proteksi password jika diisi
-        if password and password.strip():
+        if password:
             writer.encrypt(
-                user_password=password.strip(),
-                owner_password=f"{password.strip()}_owner_{uuid.uuid4().hex[:6]}",
+                user_password=password,
+                owner_password=uuid.uuid4().hex,
                 algorithm="AES-128",
             )
             logger.info(f"Proteksi password AES-128 diaktifkan pada: {output_path}")

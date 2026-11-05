@@ -1,5 +1,10 @@
 "use client";
 
+import PageHeading from "@/components/ui/PageHeading";
+import ToolStorage from "@/components/ToolStorage";
+
+import { formatBytes } from "@/lib/format";
+
 import DownloadLink from "@/components/DownloadLink";
 
 import { useState, useRef } from "react";
@@ -31,26 +36,22 @@ import {
   ArrowDownToLine,
 } from "lucide-react";
 
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
 
 function getFileIcon(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase();
-  if (ext === "pdf") return <FileText size={18} style={{ color: "#ef4444" }} />;
-  if (["doc", "docx"].includes(ext || "")) return <FileText size={18} style={{ color: "#2563eb" }} />;
-  if (["xls", "xlsx"].includes(ext || "")) return <FileSpreadsheet size={18} style={{ color: "#16a34a" }} />;
-  if (["ppt", "pptx"].includes(ext || "")) return <Presentation size={18} style={{ color: "#ea580c" }} />;
-  if (["jpg", "jpeg", "png"].includes(ext || "")) return <FileImage size={18} style={{ color: "#0891b2" }} />;
-  return <FileText size={18} style={{ color: "var(--color-ink-black)" }} />;
+  if (ext === "pdf") return <FileText size={18} style={{ color: "var(--clr-error)" }} />;
+  if (["doc", "docx"].includes(ext || "")) return <FileText size={18} style={{ color: "var(--color-electric-blue)" }} />;
+  if (["xls", "xlsx"].includes(ext || "")) return <FileSpreadsheet size={18} style={{ color: "var(--clr-success)" }} />;
+  if (["ppt", "pptx"].includes(ext || "")) return <Presentation size={18} style={{ color: "var(--clr-warning)" }} />;
+  if (["jpg", "jpeg", "png"].includes(ext || "")) return <FileImage size={18} style={{ color: "var(--color-electric-blue)" }} />;
+  return <FileText size={18} style={{ color: "var(--color-midnight-ink)" }} />;
 }
 
 type MergeTabMode = "sequence" | "insert";
 type InsertPos = "start" | "end" | "custom";
 
 export default function MergerPage() {
+  const [saveToWorkspace, setSaveToWorkspace] = useState(false);
   const [tabMode, setTabMode] = useState<MergeTabMode>("insert");
 
   // State for Sequence Mode
@@ -181,25 +182,6 @@ export default function MergerPage() {
     });
   };
   // Handle Multiple File Selection in Sequence Mode
-  const handleFilesAdd = (newFiles: FileList | File[]) => {
-    const arr = Array.from(newFiles);
-    setFiles((prev) => [...prev, ...arr]);
-    setJobId(null);
-    setDoneJob(null);
-    setSubmitError(null);
-  };
-
-  // Drag-and-drop reordering helper
-  const moveFile = (dragIndex: number, hoverIndex: number) => {
-    if (jobId) return;
-    setFiles((prev) => {
-      const next = [...prev];
-      const [removed] = next.splice(dragIndex, 1);
-      next.splice(hoverIndex, 0, removed);
-      return next;
-    });
-  };
-
   const removeFile = (index: number) => {
     if (jobId) return;
     setFiles((prev) => prev.filter((_, i) => i !== index));
@@ -218,6 +200,7 @@ export default function MergerPage() {
         return;
       }
       res = await mergeDocuments({
+      saveToWorkspace,
         files: [mainDoc, insertDoc],
         mergeMode: "insert",
         insertPosition: insertPos,
@@ -231,6 +214,7 @@ export default function MergerPage() {
         return;
       }
       res = await mergeDocuments({
+      saveToWorkspace,
         files,
         mergeMode: "sequence",
         customTitle: customTitle.trim() || undefined,
@@ -264,17 +248,14 @@ export default function MergerPage() {
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
       {/* Page Header */}
       <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <h2>
-            Document <span className="highlight-span">Merger</span>
-          </h2>
-          <p>Gabungkan beberapa berkas atau sisipkan dokumen tambahan di awal, akhir, atau halaman tertentu.</p>
+          <PageHeading title="Gabung berkas" description="Susun dan gabungkan berkas menjadi satu dokumen PDF." />
+          <GuideButton onClick={() => setShowGuide(true)} />
         </div>
-        <GuideButton onClick={() => setShowGuide(true)} />
-      </div>
+      <ToolStorage value={saveToWorkspace} onChange={setSaveToWorkspace} disabled={Boolean(jobId)} documentId={documentId} done={isDone} />
+
 
       {/* Mode Selector Tabs */}
-      <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--color-stone-border)", paddingBottom: "12px" }}>
+      <div style={{ display: "flex", gap: "8px", borderBottom: "1px solid var(--color-ash)", paddingBottom: "12px" }}>
         <button
           type="button"
           onClick={() => !jobId && setTabMode("insert")}
@@ -306,7 +287,7 @@ export default function MergerPage() {
               {/* Step 1: Main Document */}
               <div className="card" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                  <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                     1. Dokumen Utama (Main Document)
                   </h3>
                   {mainDoc && (
@@ -325,7 +306,7 @@ export default function MergerPage() {
                 />
 
                 {fetchingMainInfo && (
-                  <div style={{ fontSize: "12px", color: "var(--color-warm-gray)", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <div style={{ fontSize: "12px", color: "var(--color-graphite)", display: "flex", alignItems: "center", gap: "6px" }}>
                     <span className="animate-spin">⟳</span> Menghitung total halaman dokumen...
                   </div>
                 )}
@@ -333,10 +314,10 @@ export default function MergerPage() {
 
               {/* Step 2: Document to Insert */}
               <div className="card" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                   2. Dokumen yang Ingin Disisipkan
                 </h3>
-                <p style={{ fontSize: "12.5px", color: "var(--color-warm-gray)", marginTop: "-6px" }}>
+                <p style={{ fontSize: "12.5px", color: "var(--color-graphite)", marginTop: "-6px" }}>
                   Unggah berkas lampiran, cover depan, lembar pengesahan, atau dokumen lain.
                 </p>
 
@@ -352,7 +333,7 @@ export default function MergerPage() {
               {/* Step 3: Insertion Position Options */}
               {mainDoc && insertDoc && (
                 <div className="card animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                  <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                     3. Posisi Penyisipan Dokumen
                   </h3>
 
@@ -363,8 +344,8 @@ export default function MergerPage() {
                       style={{
                         padding: "12px 14px",
                         borderRadius: "var(--radius-inputs)",
-                        border: `1px solid ${insertPos === "start" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
-                        background: insertPos === "start" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
+                        border: `1px solid ${insertPos === "start" ? "var(--color-electric-blue)" : "var(--color-ash)"}`,
+                        background: insertPos === "start" ? "var(--color-canvas-white)" : "var(--color-canvas-white)",
                         cursor: jobId ? "default" : "pointer",
                         transition: "var(--transition-fast)",
                       }}
@@ -377,11 +358,11 @@ export default function MergerPage() {
                           onChange={() => setInsertPos("start")}
                           disabled={!!jobId}
                         />
-                        <span style={{ fontWeight: 600, fontSize: "13.5px", color: "var(--color-ink-black)" }}>
+                        <span style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--color-midnight-ink)" }}>
                           Di Awal Dokumen (Prepend / Cover Depan)
                         </span>
                       </div>
-                      <p style={{ fontSize: "12px", color: "var(--color-warm-gray)", marginLeft: "24px" }}>
+                      <p style={{ fontSize: "12px", color: "var(--color-graphite)", marginLeft: "24px" }}>
                         Dokumen sisipan akan diletakkan di halaman pertama sebelum dokumen utama.
                       </p>
                     </div>
@@ -392,8 +373,8 @@ export default function MergerPage() {
                       style={{
                         padding: "12px 14px",
                         borderRadius: "var(--radius-inputs)",
-                        border: `1px solid ${insertPos === "end" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
-                        background: insertPos === "end" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
+                        border: `1px solid ${insertPos === "end" ? "var(--color-electric-blue)" : "var(--color-ash)"}`,
+                        background: insertPos === "end" ? "var(--color-canvas-white)" : "var(--color-canvas-white)",
                         cursor: jobId ? "default" : "pointer",
                         transition: "var(--transition-fast)",
                       }}
@@ -406,11 +387,11 @@ export default function MergerPage() {
                           onChange={() => setInsertPos("end")}
                           disabled={!!jobId}
                         />
-                        <span style={{ fontWeight: 600, fontSize: "13.5px", color: "var(--color-ink-black)" }}>
+                        <span style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--color-midnight-ink)" }}>
                           Di Akhir Dokumen (Append / Lampiran Belakang)
                         </span>
                       </div>
-                      <p style={{ fontSize: "12px", color: "var(--color-warm-gray)", marginLeft: "24px" }}>
+                      <p style={{ fontSize: "12px", color: "var(--color-graphite)", marginLeft: "24px" }}>
                         Dokumen sisipan akan diletakkan setelah halaman terakhir dokumen utama.
                       </p>
                     </div>
@@ -421,8 +402,8 @@ export default function MergerPage() {
                       style={{
                         padding: "12px 14px",
                         borderRadius: "var(--radius-inputs)",
-                        border: `1px solid ${insertPos === "custom" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
-                        background: insertPos === "custom" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
+                        border: `1px solid ${insertPos === "custom" ? "var(--color-electric-blue)" : "var(--color-ash)"}`,
+                        background: insertPos === "custom" ? "var(--color-canvas-white)" : "var(--color-canvas-white)",
                         cursor: jobId ? "default" : "pointer",
                         transition: "var(--transition-fast)",
                       }}
@@ -435,17 +416,17 @@ export default function MergerPage() {
                           onChange={() => setInsertPos("custom")}
                           disabled={!!jobId}
                         />
-                        <span style={{ fontWeight: 600, fontSize: "13.5px", color: "var(--color-ink-black)" }}>
+                        <span style={{ fontWeight: 500, fontSize: "13.5px", color: "var(--color-midnight-ink)" }}>
                           Kustom (Di Antara Halaman Tertentu)
                         </span>
                       </div>
-                      <p style={{ fontSize: "12px", color: "var(--color-warm-gray)", marginLeft: "24px" }}>
+                      <p style={{ fontSize: "12px", color: "var(--color-graphite)", marginLeft: "24px" }}>
                         Sisipkan dokumen di tengah-tengah halaman yang Anda tentukan.
                       </p>
 
                       {insertPos === "custom" && (
                         <div style={{ marginTop: "10px", marginLeft: "24px", display: "flex", alignItems: "center", gap: "8px" }}>
-                          <span style={{ fontSize: "12.5px", color: "var(--color-ink-black)" }}>Sisipkan setelah Halaman ke-</span>
+                          <span style={{ fontSize: "12.5px", color: "var(--color-midnight-ink)" }}>Sisipkan setelah Halaman ke-</span>
                           <input
                             type="number"
                             className="input"
@@ -456,7 +437,7 @@ export default function MergerPage() {
                             disabled={!!jobId}
                             style={{ width: "65px", height: "32px", textAlign: "center", padding: "4px" }}
                           />
-                          <span style={{ fontSize: "12px", color: "var(--color-ash-gray)" }}>
+                          <span style={{ fontSize: "12px", color: "var(--color-graphite)" }}>
                             (dari {mainDocPages} halaman)
                           </span>
                         </div>
@@ -466,7 +447,7 @@ export default function MergerPage() {
 
                   {/* Output Name Input */}
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-midnight-ink)" }}>
                       Nama Berkas Hasil:
                     </label>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -478,7 +459,7 @@ export default function MergerPage() {
                         placeholder="cth: Laporan_Gabungan"
                         style={{ fontSize: "13px" }}
                       />
-                      <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-warm-gray)" }}>.pdf</span>
+                      <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-graphite)" }}>.pdf</span>
                     </div>
                   </div>
 
@@ -517,7 +498,7 @@ export default function MergerPage() {
             <>
               <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                  <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                     Daftar Berkas yang Digabungkan
                   </h3>
                   {files.length > 0 && (
@@ -549,7 +530,7 @@ export default function MergerPage() {
                       handleAddFiles(e.dataTransfer.files);
                     }}
                     style={{
-                      border: "2px dashed var(--color-stone-border)",
+                      border: "2px dashed var(--color-ash)",
                       borderRadius: "var(--radius-cards)",
                       padding: "48px 24px",
                       display: "flex",
@@ -558,7 +539,7 @@ export default function MergerPage() {
                       justifyContent: "center",
                       textAlign: "center",
                       cursor: "pointer",
-                      background: "var(--color-stone-canvas)",
+                      background: "var(--color-canvas-white)",
                     }}
                   >
                     <div
@@ -566,21 +547,21 @@ export default function MergerPage() {
                         width: 52,
                         height: 52,
                         borderRadius: "50%",
-                        background: "var(--color-pure-white)",
-                        border: "1px solid var(--color-stone-border)",
+                        background: "var(--color-canvas-white)",
+                        border: "1px solid var(--color-ash)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        color: "var(--color-cyan-edge)",
+                        color: "var(--color-electric-blue)",
                         marginBottom: "12px",
                       }}
                     >
                       <UploadCloud size={24} />
                     </div>
-                    <p style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-ink-black)", marginBottom: "4px" }}>
+                    <p style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-midnight-ink)", marginBottom: "4px" }}>
                       Pilih atau Tarik Beberapa Berkas ke Sini
                     </p>
-                    <p style={{ fontSize: "12.5px", color: "var(--color-warm-gray)" }}>
+                    <p style={{ fontSize: "12.5px", color: "var(--color-graphite)" }}>
                       Mendukung PDF, Word, Excel, PPTX, dan Gambar.
                     </p>
                   </div>
@@ -594,8 +575,8 @@ export default function MergerPage() {
                           alignItems: "center",
                           gap: "10px",
                           padding: "10px 12px",
-                          background: "var(--color-stone-canvas)",
-                          border: "1px solid var(--color-stone-border)",
+                          background: "var(--color-canvas-white)",
+                          border: "1px solid var(--color-ash)",
                           borderRadius: "var(--radius-inputs)",
                         }}
                       >
@@ -604,10 +585,10 @@ export default function MergerPage() {
                             width: 22,
                             height: 22,
                             borderRadius: "50%",
-                            background: "var(--color-ink-black)",
-                            color: "var(--color-pure-white)",
+                            background: "var(--color-midnight-ink)",
+                            color: "var(--color-canvas-white)",
                             fontSize: "11px",
-                            fontWeight: 600,
+                            fontWeight: 500,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -620,10 +601,10 @@ export default function MergerPage() {
                         <div style={{ flexShrink: 0 }}>{getFileIcon(file.name)}</div>
 
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-ink-black)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-midnight-ink)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                             {file.name}
                           </p>
-                          <span style={{ fontSize: "11px", color: "var(--color-ash-gray)" }}>{formatBytes(file.size)}</span>
+                          <span style={{ fontSize: "11px", color: "var(--color-graphite)" }}>{formatBytes(file.size)}</span>
                         </div>
 
                         {!jobId && (
@@ -633,7 +614,7 @@ export default function MergerPage() {
                               onClick={() => moveToStart(idx)}
                               disabled={idx === 0}
                               title="Pindahkan ke Paling Awal"
-                              style={{ padding: "4px", color: idx === 0 ? "var(--color-stone-muted)" : "var(--color-ink-black)", cursor: idx === 0 ? "default" : "pointer" }}
+                              style={{ padding: "4px", color: idx === 0 ? "var(--color-smoke)" : "var(--color-midnight-ink)", cursor: idx === 0 ? "default" : "pointer" }}
                             >
                               <ArrowUpToLine size={15} />
                             </button>
@@ -642,7 +623,7 @@ export default function MergerPage() {
                               onClick={() => moveFileUp(idx)}
                               disabled={idx === 0}
                               title="Geser Naik 1 Langkah"
-                              style={{ padding: "4px", color: idx === 0 ? "var(--color-stone-muted)" : "var(--color-ink-black)", cursor: idx === 0 ? "default" : "pointer" }}
+                              style={{ padding: "4px", color: idx === 0 ? "var(--color-smoke)" : "var(--color-midnight-ink)", cursor: idx === 0 ? "default" : "pointer" }}
                             >
                               <ChevronUp size={16} />
                             </button>
@@ -651,7 +632,7 @@ export default function MergerPage() {
                               onClick={() => moveFileDown(idx)}
                               disabled={idx === files.length - 1}
                               title="Geser Turun 1 Langkah"
-                              style={{ padding: "4px", color: idx === files.length - 1 ? "var(--color-stone-muted)" : "var(--color-ink-black)", cursor: idx === files.length - 1 ? "default" : "pointer" }}
+                              style={{ padding: "4px", color: idx === files.length - 1 ? "var(--color-smoke)" : "var(--color-midnight-ink)", cursor: idx === files.length - 1 ? "default" : "pointer" }}
                             >
                               <ChevronDown size={16} />
                             </button>
@@ -660,14 +641,14 @@ export default function MergerPage() {
                               onClick={() => moveToEnd(idx)}
                               disabled={idx === files.length - 1}
                               title="Pindahkan ke Paling Akhir"
-                              style={{ padding: "4px", color: idx === files.length - 1 ? "var(--color-stone-muted)" : "var(--color-ink-black)", cursor: idx === files.length - 1 ? "default" : "pointer" }}
+                              style={{ padding: "4px", color: idx === files.length - 1 ? "var(--color-smoke)" : "var(--color-midnight-ink)", cursor: idx === files.length - 1 ? "default" : "pointer" }}
                             >
                               <ArrowDownToLine size={15} />
                             </button>
                             <button
                               type="button"
                               onClick={() => removeFile(idx)}
-                              style={{ padding: "4px", color: "#ef4444", cursor: "pointer", marginLeft: "4px" }}
+                              style={{ padding: "4px", color: "var(--clr-error)", cursor: "pointer", marginLeft: "4px" }}
                               title="Hapus Berkas"
                             >
                               <Trash2 size={15} />
@@ -694,7 +675,7 @@ export default function MergerPage() {
               {files.length > 0 && (
                 <div className="card animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-midnight-ink)" }}>
                       Nama Berkas Hasil:
                     </label>
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -706,7 +687,7 @@ export default function MergerPage() {
                         placeholder="cth: Dokumen_Gabungan"
                         style={{ fontSize: "13px" }}
                       />
-                      <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-warm-gray)" }}>.pdf</span>
+                      <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-graphite)" }}>.pdf</span>
                     </div>
                   </div>
 
@@ -752,10 +733,10 @@ export default function MergerPage() {
                   <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                     Dokumen Berhasil Digabungkan!
                   </h3>
-                  <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
+                  <p style={{ fontSize: "13px", color: "var(--color-graphite)" }}>
                     Hasil penggabungan sesuai posisi yang Anda pilih telah selesai dan siap diunduh.
                   </p>
                 </div>
@@ -776,8 +757,8 @@ export default function MergerPage() {
             /* Visual Flow Assembly Canvas */
             <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Sparkles size={16} style={{ color: "var(--color-cyan-edge)" }} />
-                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                <Sparkles size={16} style={{ color: "var(--color-electric-blue)" }} />
+                <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                   Visual Struktur Hasil Dokumen
                 </h3>
               </div>
@@ -786,7 +767,7 @@ export default function MergerPage() {
                 mainDoc && insertDoc ? (
                   /* Visual Flow Blocks for Insertion */
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                    <p style={{ fontSize: "12.5px", color: "var(--color-warm-gray)" }}>
+                    <p style={{ fontSize: "12.5px", color: "var(--color-graphite)" }}>
                       Struktur urutan halaman hasil penggabungan:
                     </p>
 
@@ -795,19 +776,19 @@ export default function MergerPage() {
                         display: "flex",
                         flexDirection: "column",
                         gap: "8px",
-                        background: "var(--color-stone-canvas)",
+                        background: "var(--color-canvas-white)",
                         padding: "16px",
                         borderRadius: "var(--radius-inputs)",
-                        border: "1px solid var(--color-stone-border)",
+                        border: "1px solid var(--color-ash)",
                       }}
                     >
                       {insertPos === "start" && (
                         <>
-                          <div style={{ padding: "10px", background: "var(--color-sky-wash)", border: "1px solid var(--color-cyan-edge)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 600, color: "var(--color-cyan-edge)" }}>
+                          <div style={{ padding: "10px", background: "var(--color-active-blue)", border: "1px solid var(--color-electric-blue)", borderRadius: "var(--radius-cardssmall)", fontSize: "12.5px", fontWeight: 500, color: "var(--color-electric-blue)" }}>
                             ⚡ [DI AWAL] {insertDoc.name}
                           </div>
-                          <div style={{ textAlign: "center", color: "var(--color-ash-gray)" }}>↓ disambung dengan</div>
-                          <div style={{ padding: "10px", background: "var(--color-pure-white)", border: "1px solid var(--color-stone-border)", borderRadius: "6px", fontSize: "12.5px", color: "var(--color-ink-black)" }}>
+                          <div style={{ textAlign: "center", color: "var(--color-graphite)" }}>↓ disambung dengan</div>
+                          <div style={{ padding: "10px", background: "var(--color-canvas-white)", border: "1px solid var(--color-ash)", borderRadius: "var(--radius-cardssmall)", fontSize: "12.5px", color: "var(--color-midnight-ink)" }}>
                             📄 [DOKUMEN UTAMA] {mainDoc.name} (Hal 1 s/d {mainDocPages})
                           </div>
                         </>
@@ -815,11 +796,11 @@ export default function MergerPage() {
 
                       {insertPos === "end" && (
                         <>
-                          <div style={{ padding: "10px", background: "var(--color-pure-white)", border: "1px solid var(--color-stone-border)", borderRadius: "6px", fontSize: "12.5px", color: "var(--color-ink-black)" }}>
+                          <div style={{ padding: "10px", background: "var(--color-canvas-white)", border: "1px solid var(--color-ash)", borderRadius: "var(--radius-cardssmall)", fontSize: "12.5px", color: "var(--color-midnight-ink)" }}>
                             📄 [DOKUMEN UTAMA] {mainDoc.name} (Hal 1 s/d {mainDocPages})
                           </div>
-                          <div style={{ textAlign: "center", color: "var(--color-ash-gray)" }}>↓ disambung dengan</div>
-                          <div style={{ padding: "10px", background: "var(--color-sky-wash)", border: "1px solid var(--color-cyan-edge)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 600, color: "var(--color-cyan-edge)" }}>
+                          <div style={{ textAlign: "center", color: "var(--color-graphite)" }}>↓ disambung dengan</div>
+                          <div style={{ padding: "10px", background: "var(--color-active-blue)", border: "1px solid var(--color-electric-blue)", borderRadius: "var(--radius-cardssmall)", fontSize: "12.5px", fontWeight: 500, color: "var(--color-electric-blue)" }}>
                             ⚡ [DI AKHIR] {insertDoc.name}
                           </div>
                         </>
@@ -827,19 +808,19 @@ export default function MergerPage() {
 
                       {insertPos === "custom" && (
                         <>
-                          <div style={{ padding: "8px 10px", background: "var(--color-pure-white)", border: "1px solid var(--color-stone-border)", borderRadius: "6px", fontSize: "12px", color: "var(--color-ink-black)" }}>
+                          <div style={{ padding: "8px 10px", background: "var(--color-canvas-white)", border: "1px solid var(--color-ash)", borderRadius: "var(--radius-cardssmall)", fontSize: "12px", color: "var(--color-midnight-ink)" }}>
                             📄 [DOKUMEN UTAMA] Halaman 1 s/d {afterPage}
                           </div>
-                          <div style={{ textAlign: "center", color: "var(--color-cyan-edge)", fontSize: "11px", fontWeight: 600 }}>
+                          <div style={{ textAlign: "center", color: "var(--color-electric-blue)", fontSize: "11px", fontWeight: 500 }}>
                             ⚡ DISISIPKAN DI SINI (Setelah Hal {afterPage}) ⚡
                           </div>
-                          <div style={{ padding: "8px 10px", background: "var(--color-sky-wash)", border: "1px solid var(--color-cyan-edge)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 600, color: "var(--color-cyan-edge)" }}>
+                          <div style={{ padding: "8px 10px", background: "var(--color-active-blue)", border: "1px solid var(--color-electric-blue)", borderRadius: "var(--radius-cardssmall)", fontSize: "12.5px", fontWeight: 500, color: "var(--color-electric-blue)" }}>
                             📄 {insertDoc.name}
                           </div>
                           {afterPage < mainDocPages && (
                             <>
-                              <div style={{ textAlign: "center", color: "var(--color-ash-gray)", fontSize: "11px" }}>↓ dilanjutkan dengan</div>
-                              <div style={{ padding: "8px 10px", background: "var(--color-pure-white)", border: "1px solid var(--color-stone-border)", borderRadius: "6px", fontSize: "12px", color: "var(--color-ink-black)" }}>
+                              <div style={{ textAlign: "center", color: "var(--color-graphite)", fontSize: "11px" }}>↓ dilanjutkan dengan</div>
+                              <div style={{ padding: "8px 10px", background: "var(--color-canvas-white)", border: "1px solid var(--color-ash)", borderRadius: "var(--radius-cardssmall)", fontSize: "12px", color: "var(--color-midnight-ink)" }}>
                                 📄 [DOKUMEN UTAMA] Halaman {afterPage + 1} s/d {mainDocPages}
                               </div>
                             </>
@@ -849,13 +830,13 @@ export default function MergerPage() {
                     </div>
                   </div>
                 ) : (
-                  <div style={{ textAlign: "center", padding: "40px 16px", color: "var(--color-warm-gray)", fontSize: "13px" }}>
+                  <div style={{ textAlign: "center", padding: "40px 16px", color: "var(--color-graphite)", fontSize: "13px" }}>
                     Pilih Dokumen Utama dan Dokumen Sisipan di sebelah kiri untuk melihat simulasi alur penyisipan.
                   </div>
                 )
               ) : (
                 /* Sequence Mode Tips */
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", color: "var(--color-warm-gray)", lineHeight: 1.55 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px", color: "var(--color-graphite)", lineHeight: 1.55 }}>
                   <p>
                     <strong>Pengaturan Posisi Instan:</strong> Gunakan ikon panah ke garis atas/bawah untuk langsung memindahkan dokumen ke urutan paling pertama (cover) atau paling terakhir (lampiran).
                   </p>
@@ -865,9 +846,9 @@ export default function MergerPage() {
                 </div>
               )}
 
-              <div style={{ borderTop: "1px solid var(--color-stone-border)", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12.5px" }}>
-                <span style={{ color: "var(--color-ash-gray)" }}>Hasil tersimpan otomatis</span>
-                <Link href="/riwayat-dokumen" style={{ color: "var(--color-cyan-edge)", fontWeight: 500 }}>
+              <div style={{ borderTop: "1px solid var(--color-ash)", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12.5px" }}>
+                <span style={{ color: "var(--color-graphite)" }}>Hasil tersimpan otomatis</span>
+                <Link href="/riwayat-dokumen" style={{ color: "var(--color-electric-blue)", fontWeight: 500 }}>
                   Buka Riwayat Dokumen →
                 </Link>
               </div>

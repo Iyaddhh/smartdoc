@@ -5,38 +5,7 @@ from typing import List
 from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 from app.core.logger import logger
-
-
-def parse_page_ranges(range_str: str, max_pages: int) -> List[int]:
-    """
-    Parses a page range string like '1-3, 5, 8-10' into 0-indexed page indices.
-    E.g. '1-3, 5' -> [0, 1, 2, 4]
-    """
-    pages = set()
-    parts = range_str.split(",")
-    for part in parts:
-        part = part.strip()
-        if not part:
-            continue
-        if "-" in part:
-            sub = part.split("-")
-            if len(sub) == 2:
-                try:
-                    start = max(1, int(sub[0].strip()))
-                    end = min(max_pages, int(sub[1].strip()))
-                    if start <= end:
-                        for p in range(start, end + 1):
-                            pages.add(p - 1)
-                except ValueError:
-                    continue
-        else:
-            try:
-                p = int(part)
-                if 1 <= p <= max_pages:
-                    pages.add(p - 1)
-            except ValueError:
-                continue
-    return sorted(list(pages))
+from app.core.page_ranges import parse_page_ranges
 
 
 def get_pdf_page_count(pdf_path: str) -> int:

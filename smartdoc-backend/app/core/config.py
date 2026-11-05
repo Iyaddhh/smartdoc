@@ -1,10 +1,11 @@
 import re
+from pathlib import Path
 from typing import Literal
 from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=Path(__file__).resolve().parents[2] / ".env", extra="ignore")
     APP_ENV: str = "development"
     DATABASE_URL: str = "postgresql+asyncpg://smartdoc:smartdoc_secret@db:5432/smartdoc_db"
     JWT_ACCESS_SECRET: str = Field(
@@ -19,10 +20,16 @@ class Settings(BaseSettings):
     AUTH_COOKIE_SAME_SITE: Literal["lax", "strict", "none"] = "lax"
     AUTH_COOKIE_DOMAIN: str = ""
     TRUST_PROXY: bool = False
+    FRONTEND_URL: str = "http://127.0.0.1:3001"
+    SMTP_HOST: str = "127.0.0.1"
+    SMTP_PORT: int = 1025
+    MAIL_FROM: str = "SmartDoc <noreply@smartdoc.local>"
+    MAIL_TRANSPORT: Literal["local", "smtp"] = "local"
     STORAGE_PATH: str = "./storage"
 
     # Limit ukuran berkas per kategori (MB)
-    MAX_FILE_SIZE_DOCUMENT_MB: int = 35   # docx, xlsx, pptx
+    MAX_FILE_SIZE_DOCUMENT_MB: int = 35   # docx, xlsx
+    MAX_FILE_SIZE_PPTX_MB: int = Field(default=200, ge=1)
     MAX_FILE_SIZE_PDF_MB: int = 35        # pdf
     MAX_FILE_SIZE_IMAGE_MB: int = 12      # jpg, jpeg, png
 
@@ -31,12 +38,16 @@ class Settings(BaseSettings):
     MAX_PDF_PAGES: int = 50               # maksimal halaman PDF
     MAX_UPLOAD_FILES: int = Field(default=50, ge=1, le=1000)
     MAX_TOTAL_UPLOAD_MB: int = Field(default=35, ge=1)
-    MAX_REQUEST_SIZE_MB: int = Field(default=37, ge=1)
+    MAX_REQUEST_SIZE_MB: int = Field(default=202, ge=1)
     MAX_TOTAL_IMAGE_PIXELS: int = Field(default=100_000_000, ge=1)
     MAX_PDF_PAGE_EDGE_POINTS: int = Field(default=2400, ge=72)
     MAX_OFFICE_UNCOMPRESSED_MB: int = Field(default=128, ge=1)
     MAX_OFFICE_ENTRY_MB: int = Field(default=32, ge=1)
+    MAX_PPTX_UNCOMPRESSED_MB: int = Field(default=512, ge=1)
+    MAX_PPTX_ENTRY_MB: int = Field(default=200, ge=1)
     MAX_OFFICE_ENTRIES: int = Field(default=2000, ge=1)
+    MAX_PPTX_ENTRIES: int = Field(default=20000, ge=1)
+    MAX_PPTX_IMAGE_PIXELS: int = Field(default=8_000_000, ge=1)
     MAX_OFFICE_COMPRESSION_RATIO: int = Field(default=200, ge=1)
     MAX_ACTIVE_JOBS_PER_USER: int = Field(default=2, ge=1)
     MAX_ACTIVE_JOBS_GLOBAL: int = Field(default=12, ge=1)
@@ -48,6 +59,7 @@ class Settings(BaseSettings):
     TEMP_FILE_TTL_HOURS: int = 24
     JOB_TIMEOUT_SECONDS: int = 300
     COMPRESSION_IMAGE_QUALITY: int = 85
+    COMPRESSION_PPTX_MODE: Literal["balanced", "lossless"] = "balanced"
     COMPRESSION_IMAGE_DPI: int = 150
     CORS_ALLOWED_ORIGINS: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001"
 
@@ -57,6 +69,13 @@ class Settings(BaseSettings):
         if not re.fullmatch(r"[1-9][0-9]*[smhd]", value):
             raise ValueError("Gunakan durasi positif dengan satuan s/m/h/d, misalnya 15m atau 7d.")
         return value
+
+    @model_validator(mode="after")
+    def validate_upload_limits(self):
+        required = max(self.MAX_FILE_SIZE_PPTX_MB, self.MAX_TOTAL_UPLOAD_MB) + 2
+        if self.MAX_REQUEST_SIZE_MB < required:
+            raise ValueError("MAX_REQUEST_SIZE_MB harus mencakup batas PPTX/batch dan margin multipart 2 MB.")
+        return self
 
     @model_validator(mode="after")
     def validate_cookie_policy(self):
@@ -76,7 +95,9 @@ class Settings(BaseSettings):
     def get_max_size_for_extension(self, ext: str) -> int:
         """Mengembalikan batas ukuran maksimum dalam bytes berdasarkan kategori ekstensi berkas."""
         ext_clean = ext.lower().lstrip(".")
-        if ext_clean in {"docx", "xlsx", "pptx"}:
+        if ext_clean == "pptx":
+            return self.MAX_FILE_SIZE_PPTX_MB * 1024 * 1024
+        if ext_clean in {"docx", "xlsx"}:
             return self.MAX_FILE_SIZE_DOCUMENT_MB * 1024 * 1024
         elif ext_clean == "pdf":
             return self.MAX_FILE_SIZE_PDF_MB * 1024 * 1024
@@ -90,6 +111,8 @@ class Settings(BaseSettings):
 
     def validate_production_security(self) -> None:
         """Enforce a strong JWT access secret in production."""
+        if self.APP_ENV.lower() == "production" and not self.AUTH_COOKIE_SECURE:
+            raise RuntimeError("Production membutuhkan AUTH_COOKIE_SECURE=true dan HTTPS.")
         if self.APP_ENV.lower() == "production" and (
             len(self.SECRET_KEY.encode()) < 32
             or self.SECRET_KEY == "smartdoc-development-only-secret-key-do-not-use-in-production"

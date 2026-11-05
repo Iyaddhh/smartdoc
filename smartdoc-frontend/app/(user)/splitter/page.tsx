@@ -1,5 +1,8 @@
 "use client";
 
+import PageHeading from "@/components/ui/PageHeading";
+import ToolStorage from "@/components/ToolStorage";
+
 import DownloadLink from "@/components/DownloadLink";
 
 import { useState, useMemo } from "react";
@@ -78,6 +81,7 @@ function setToRangeString(set: Set<number>): string {
 }
 
 export default function SplitterPage() {
+  const [saveToWorkspace, setSaveToWorkspace] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [docInfo, setDocInfo] = useState<DocumentInfo | null>(null);
   const [fetchingInfo, setFetchingInfo] = useState(false);
@@ -185,6 +189,7 @@ export default function SplitterPage() {
     setDoneJob(null);
 
     const res = await splitDocument({
+      saveToWorkspace,
       file,
       splitMode,
       rangeExpression: splitMode === "extract_range" ? rangeExpression.trim() : undefined,
@@ -219,14 +224,11 @@ export default function SplitterPage() {
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
       {/* Header */}
       <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <h2>
-            Document <span className="highlight-span">Splitter</span>
-          </h2>
-          <p>Pisahkan, potong, atau ekstrak halaman dokumen dengan pratinjau visual interaktif.</p>
+          <PageHeading title="Pisah halaman" description="Ambil halaman pilihan atau pisahkan dokumen menjadi beberapa berkas." />
+          <GuideButton onClick={() => setShowGuide(true)} />
         </div>
-        <GuideButton onClick={() => setShowGuide(true)} />
-      </div>
+      <ToolStorage value={saveToWorkspace} onChange={setSaveToWorkspace} disabled={Boolean(jobId)} documentId={documentId} done={isDone} />
+
 
       {/* Main Grid: Left Configuration & Right Document Preview */}
       <div className="grid-2" style={{ alignItems: "start" }}>
@@ -237,7 +239,7 @@ export default function SplitterPage() {
           {/* Step 1: File Upload */}
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+              <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                 1. Unggah Berkas
               </h3>
               {docInfo && (
@@ -257,7 +259,7 @@ export default function SplitterPage() {
             />
 
             {fetchingInfo && (
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--color-warm-gray)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "12px", color: "var(--color-graphite)" }}>
                 <span className="animate-spin">⟳</span> Membuat pratinjau halaman visual...
               </div>
             )}
@@ -267,11 +269,11 @@ export default function SplitterPage() {
           {file && (
             <div className="card animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "16px", opacity: isFileLoading ? 0.6 : 1 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                   2. Metode Pemisahan
                 </h3>
                 {isFileLoading && (
-                  <span style={{ fontSize: "11.5px", color: "var(--color-cyan-edge)", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ fontSize: "11.5px", color: "var(--color-electric-blue)", display: "flex", alignItems: "center", gap: "4px" }}>
                     <span className="animate-spin">⟳</span> Menyiapkan...
                   </span>
                 )}
@@ -285,8 +287,8 @@ export default function SplitterPage() {
                   style={{
                     padding: "14px",
                     borderRadius: "var(--radius-inputs)",
-                    border: `1px solid ${splitMode === "extract_range" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
-                    background: splitMode === "extract_range" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
+                    border: `1px solid ${splitMode === "extract_range" ? "var(--color-electric-blue)" : "var(--color-ash)"}`,
+                    background: splitMode === "extract_range" ? "var(--color-canvas-white)" : "var(--color-canvas-white)",
                     cursor: (jobId || isFileLoading) ? "default" : "pointer",
                     transition: "var(--transition-fast)",
                   }}
@@ -299,18 +301,18 @@ export default function SplitterPage() {
                       onChange={() => setSplitMode("extract_range")}
                       disabled={!!jobId || isFileLoading}
                     />
-                    <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink-black)" }}>
+                    <span style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-midnight-ink)" }}>
                       Ekstrak Halaman Pilihan
                     </span>
                   </div>
-                  <p style={{ fontSize: "12.5px", color: "var(--color-warm-gray)", marginLeft: "24px" }}>
+                  <p style={{ fontSize: "12.5px", color: "var(--color-graphite)", marginLeft: "24px" }}>
                     Klik halaman pada panel pratinjau di samping atau masukkan rentang angka.
                   </p>
 
                   {splitMode === "extract_range" && (
                     <div style={{ marginTop: "12px", marginLeft: "24px", display: "flex", flexDirection: "column", gap: "10px" }}>
                       <div>
-                        <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                        <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-midnight-ink)" }}>
                           Rentang Halaman Terpilih:
                         </label>
                         <input
@@ -321,7 +323,7 @@ export default function SplitterPage() {
                           disabled={!!jobId || isFileLoading}
                           style={{ fontSize: "13px", height: "36px" }}
                         />
-                        <span style={{ fontSize: "11px", color: "var(--color-ash-gray)", marginTop: "2px", display: "block" }}>
+                        <span style={{ fontSize: "11px", color: "var(--color-graphite)", marginTop: "2px", display: "block" }}>
                           {selectedPages.size > 0
                             ? `${selectedPages.size} halaman terpilih (${Array.from(selectedPages).join(", ")})`
                             : "Belum ada halaman yang dipilih."}
@@ -330,7 +332,7 @@ export default function SplitterPage() {
 
                       {/* Format Output */}
                       <div>
-                        <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                        <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-midnight-ink)" }}>
                           Format Berkas Hasil:
                         </label>
                         <div style={{ display: "flex", gap: "8px" }}>
@@ -362,8 +364,8 @@ export default function SplitterPage() {
                   style={{
                     padding: "14px",
                     borderRadius: "var(--radius-inputs)",
-                    border: `1px solid ${splitMode === "fixed_interval" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
-                    background: splitMode === "fixed_interval" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
+                    border: `1px solid ${splitMode === "fixed_interval" ? "var(--color-electric-blue)" : "var(--color-ash)"}`,
+                    background: splitMode === "fixed_interval" ? "var(--color-canvas-white)" : "var(--color-canvas-white)",
                     cursor: (jobId || isFileLoading) ? "default" : "pointer",
                     transition: "var(--transition-fast)",
                   }}
@@ -376,17 +378,17 @@ export default function SplitterPage() {
                       onChange={() => setSplitMode("fixed_interval")}
                       disabled={!!jobId || isFileLoading}
                     />
-                    <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink-black)" }}>
+                    <span style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-midnight-ink)" }}>
                       Pecah per Rentang Tetap
                     </span>
                   </div>
-                  <p style={{ fontSize: "12.5px", color: "var(--color-warm-gray)", marginLeft: "24px" }}>
+                  <p style={{ fontSize: "12.5px", color: "var(--color-graphite)", marginLeft: "24px" }}>
                     Bagi dokumen menjadi potongan berkas terpisah setiap *N* halaman.
                   </p>
 
                   {splitMode === "fixed_interval" && (
                     <div style={{ marginTop: "12px", marginLeft: "24px", display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ fontSize: "13px", color: "var(--color-ink-black)" }}>Pecah setiap</span>
+                      <span style={{ fontSize: "13px", color: "var(--color-midnight-ink)" }}>Pecah setiap</span>
                       <input
                         type="number"
                         className="input"
@@ -397,9 +399,9 @@ export default function SplitterPage() {
                         disabled={!!jobId || isFileLoading}
                         style={{ width: "70px", height: "34px", textAlign: "center", padding: "4px" }}
                       />
-                      <span style={{ fontSize: "13px", color: "var(--color-ink-black)" }}>halaman</span>
+                      <span style={{ fontSize: "13px", color: "var(--color-midnight-ink)" }}>halaman</span>
                       {docInfo && (
-                        <span style={{ fontSize: "11px", color: "var(--color-warm-gray)" }}>
+                        <span style={{ fontSize: "11px", color: "var(--color-graphite)" }}>
                           (~{Math.ceil(docInfo.total_pages / chunkSize)} berkas dalam .zip)
                         </span>
                       )}
@@ -413,8 +415,8 @@ export default function SplitterPage() {
                   style={{
                     padding: "14px",
                     borderRadius: "var(--radius-inputs)",
-                    border: `1px solid ${splitMode === "all_single" ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
-                    background: splitMode === "all_single" ? "var(--color-stone-canvas)" : "var(--color-pure-white)",
+                    border: `1px solid ${splitMode === "all_single" ? "var(--color-electric-blue)" : "var(--color-ash)"}`,
+                    background: splitMode === "all_single" ? "var(--color-canvas-white)" : "var(--color-canvas-white)",
                     cursor: (jobId || isFileLoading) ? "default" : "pointer",
                     transition: "var(--transition-fast)",
                   }}
@@ -427,11 +429,11 @@ export default function SplitterPage() {
                       onChange={() => setSplitMode("all_single")}
                       disabled={!!jobId || isFileLoading}
                     />
-                    <span style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink-black)" }}>
+                    <span style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-midnight-ink)" }}>
                       Pecah Semua Halaman Tunggal
                     </span>
                   </div>
-                  <p style={{ fontSize: "12.5px", color: "var(--color-warm-gray)", marginLeft: "24px" }}>
+                  <p style={{ fontSize: "12.5px", color: "var(--color-graphite)", marginLeft: "24px" }}>
                     Setiap halaman dipisah menjadi 1 file PDF mandiri dan dikemas dalam arsip ZIP.
                   </p>
                 </div>
@@ -478,10 +480,10 @@ export default function SplitterPage() {
                   <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                     Pemisahan Selesai!
                   </h3>
-                  <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
+                  <p style={{ fontSize: "13px", color: "var(--color-graphite)" }}>
                     {splitMode === "extract_range"
                       ? `Halaman berhasil diekstrak ke format ${outputFormat.toUpperCase()}`
                       : "Seluruh potongan berkas telah dikemas ke dalam arsip ZIP"}
@@ -510,10 +512,10 @@ export default function SplitterPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "14px", minHeight: "480px" }}>
             {/* Preview Panel Header */}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-stone-border)", paddingBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--color-ash)", paddingBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Eye size={17} style={{ color: "var(--color-cyan-edge)" }} />
-                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                <Eye size={17} style={{ color: "var(--color-electric-blue)" }} />
+                <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                   Pratinjau Halaman Dokumen
                 </h3>
                 {(fetchingInfo || isFileLoading) && (
@@ -554,21 +556,21 @@ export default function SplitterPage() {
                     width: 64,
                     height: 64,
                     borderRadius: "50%",
-                    background: "var(--color-stone-canvas)",
-                    border: "1px solid var(--color-stone-border)",
+                    background: "var(--color-canvas-white)",
+                    border: "1px solid var(--color-ash)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    color: "var(--color-ash-gray)",
+                    color: "var(--color-graphite)",
                     marginBottom: "16px",
                   }}
                 >
                   <FileText size={28} />
                 </div>
-                <h4 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", marginBottom: "4px" }}>
+                <h4 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)", marginBottom: "4px" }}>
                   Belum Ada Dokumen yang Dipilih
                 </h4>
-                <p style={{ fontSize: "13px", color: "var(--color-warm-gray)", maxWidth: "340px" }}>
+                <p style={{ fontSize: "13px", color: "var(--color-graphite)", maxWidth: "340px" }}>
                   Unggah berkas PDF atau Word (.docx) pada panel kiri untuk melihat pratinjau halaman visual di sini.
                 </p>
               </div>
@@ -578,11 +580,11 @@ export default function SplitterPage() {
                 <div
                   style={{
                     padding: "10px 14px",
-                    borderRadius: "8px",
-                    background: "var(--color-sky-wash)",
-                    border: "1px solid rgba(8, 145, 178, 0.2)",
+                    borderRadius: "var(--radius-cardssmall)",
+                    background: "var(--color-active-blue)",
+                    border: "1px solid rgba(37, 99, 235, 0.2)",
                     fontSize: "12.5px",
-                    color: "var(--color-cyan-edge)",
+                    color: "var(--color-electric-blue)",
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
@@ -624,13 +626,13 @@ export default function SplitterPage() {
                       onClick={() => togglePageSelection(pageNum)}
                       style={{
                         position: "relative",
-                        background: "var(--color-pure-white)",
+                        background: "var(--color-canvas-white)",
                         borderRadius: "var(--radius-cards)",
                         border: isSelected && splitMode === "extract_range"
-                          ? "2px solid var(--color-cyan-signal)"
-                          : "1px solid var(--color-stone-border)",
+                          ? "2px solid var(--color-electric-blue)"
+                          : "1px solid var(--color-ash)",
                         boxShadow: isSelected && splitMode === "extract_range"
-                          ? "0 0 0 2px var(--color-sky-wash)"
+                          ? "0 0 0 2px var(--color-active-blue)"
                           : "var(--shadow-subtle)",
                         cursor: splitMode === "extract_range" && !jobId ? "pointer" : "default",
                         overflow: "hidden",
@@ -644,17 +646,17 @@ export default function SplitterPage() {
                         style={{
                           padding: "4px 8px",
                           background: isSelected && splitMode === "extract_range"
-                            ? "var(--color-cyan-signal)"
-                            : "var(--color-stone-canvas)",
+                            ? "var(--color-electric-blue)"
+                            : "var(--color-canvas-white)",
                           color: isSelected && splitMode === "extract_range"
-                            ? "var(--color-pure-white)"
-                            : "var(--color-ink-black)",
+                            ? "var(--color-canvas-white)"
+                            : "var(--color-midnight-ink)",
                           fontSize: "11px",
-                          fontWeight: 600,
+                          fontWeight: 500,
                           display: "flex",
                           justifyContent: "space-between",
                           alignItems: "center",
-                          borderBottom: "1px solid var(--color-stone-border)",
+                          borderBottom: "1px solid var(--color-ash)",
                         }}
                       >
                         <span>Hal {pageNum}</span>
@@ -664,18 +666,18 @@ export default function SplitterPage() {
                               width: 14,
                               height: 14,
                               borderRadius: "50%",
-                              background: isSelected ? "var(--color-pure-white)" : "transparent",
-                              border: `1px solid ${isSelected ? "var(--color-cyan-signal)" : "var(--color-stone-muted)"}`,
+                              background: isSelected ? "var(--color-canvas-white)" : "transparent",
+                              border: `1px solid ${isSelected ? "var(--color-electric-blue)" : "var(--color-smoke)"}`,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
                             }}
                           >
-                            {isSelected && <Check size={10} style={{ color: "var(--color-cyan-signal)" }} />}
+                            {isSelected && <Check size={10} style={{ color: "var(--color-electric-blue)" }} />}
                           </span>
                         )}
                         {splitMode === "fixed_interval" && chunkPart && (
-                          <span style={{ fontSize: "10px", color: "var(--color-warm-gray)" }}>
+                          <span style={{ fontSize: "10px", color: "var(--color-graphite)" }}>
                             Bagian {chunkPart}
                           </span>
                         )}
@@ -687,7 +689,7 @@ export default function SplitterPage() {
                           width: "100%",
                           height: "155px",
                           position: "relative",
-                          background: "#f4f4f3",
+                          background: "var(--color-paper-mist)",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
@@ -715,11 +717,11 @@ export default function SplitterPage() {
                             position: "absolute",
                             bottom: "6px",
                             right: "6px",
-                            background: "rgba(12, 10, 9, 0.7)",
+                            background: "rgba(10, 10, 10, 0.7)",
                             color: "white",
                             width: 24,
                             height: 24,
-                            borderRadius: "4px",
+                            borderRadius: "var(--radius-cardssmall)",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
@@ -735,7 +737,7 @@ export default function SplitterPage() {
               </div>
             ) : (
               /* Fallback if thumbnails not rendered */
-              <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--color-warm-gray)" }}>
+              <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--color-graphite)" }}>
                 <p style={{ fontSize: "13px" }}>Dokumen memiliki {docInfo?.total_pages} halaman.</p>
               </div>
             )}
@@ -750,7 +752,7 @@ export default function SplitterPage() {
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(12, 10, 9, 0.75)",
+            background: "rgba(10, 10, 10, 0.75)",
             backdropFilter: "blur(3px)",
             zIndex: 9999,
             display: "flex",
@@ -762,31 +764,31 @@ export default function SplitterPage() {
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              background: "var(--color-pure-white)",
+              background: "var(--color-canvas-white)",
               borderRadius: "var(--radius-cards)",
-              padding: "16px",
+              padding: "var(--card-padding)",
               maxWidth: "600px",
               width: "100%",
               maxHeight: "90vh",
               display: "flex",
               flexDirection: "column",
               gap: "12px",
-              boxShadow: "var(--shadow-xl)",
+              boxShadow: "none",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink-black)" }}>
+              <span style={{ fontWeight: 500, fontSize: "15px", color: "var(--color-midnight-ink)" }}>
                 Pratinjau: Halaman {zoomPage.index}
               </span>
-              <button onClick={() => setZoomPage(null)} style={{ color: "var(--color-ash-gray)", padding: "4px" }}>
+              <button onClick={() => setZoomPage(null)} style={{ color: "var(--color-graphite)", padding: "4px" }}>
                 <X size={18} />
               </button>
             </div>
-            <div style={{ flex: 1, overflowY: "auto", display: "flex", justifyContent: "center", background: "var(--color-stone-canvas)", padding: "12px", borderRadius: "var(--radius-inputs)" }}>
+            <div style={{ flex: 1, overflowY: "auto", display: "flex", justifyContent: "center", background: "var(--color-canvas-white)", padding: "12px", borderRadius: "var(--radius-inputs)" }}>
               <img
                 src={zoomPage.src}
                 alt={`Halaman ${zoomPage.index}`}
-                style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", boxShadow: "0 2px 8px rgba(0,0,0,0.1)" }}
+                style={{ maxWidth: "100%", maxHeight: "70vh", objectFit: "contain", boxShadow: "none" }}
               />
             </div>
           </div>

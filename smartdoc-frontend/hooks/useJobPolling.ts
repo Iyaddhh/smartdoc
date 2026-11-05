@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { getJobStatus, JobStatus } from "@/lib/api";
+import { isDownloadReady } from "@/lib/success-feedback";
 
 interface UseJobPollingOptions {
   onDone?: (job: JobStatus) => void;
@@ -70,6 +71,7 @@ export function useJobPolling(
       // Reset the state of the external polling subscription when it is removed.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setJob(null);
+      setError(null);
       setElapsedSeconds(0);
       setCurrentIntervalMs(intervalMs);
       currentIntervalRef.current = intervalMs;
@@ -83,6 +85,7 @@ export function useJobPolling(
     currentIntervalRef.current = intervalMs; // Reset backoff untuk job baru
     setCurrentIntervalMs(intervalMs);
     setIsPolling(true);
+    setJob(null);
     setError(null);
     setElapsedSeconds(0);
 
@@ -111,6 +114,12 @@ export function useJobPolling(
         if (res.data.status === "done") {
           isHandledRef.current = true;
           stop();
+          if (!isDownloadReady(res.data)) {
+            const error = "Proses selesai, tetapi berkas hasil tidak tersedia untuk diunduh. Periksa riwayat dokumen.";
+            setError(error);
+            onFailedRef.current?.({ ...res.data, error });
+            return;
+          }
           onDoneRef.current?.(res.data);
           if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
             try {

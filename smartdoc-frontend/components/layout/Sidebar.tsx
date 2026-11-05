@@ -17,16 +17,20 @@ import {
   ChevronDown,
   FileCog,
   LogOut,
+  FolderOpen,
+  CalendarDays,
+  Settings2,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
+import AdminNavigation from "@/components/layout/AdminNavigation";
 
 // Sub-items for "Alat Dokumen" dropdown
 const docToolLinks = [
-  { href: "/converter", label: "Converter", icon: FileOutput },
-  { href: "/compressor", label: "Compressor", icon: Minimize2 },
-  { href: "/splitter", label: "Splitter", icon: Scissors },
-  { href: "/merger", label: "Merger", icon: Combine },
-  { href: "/watermark", label: "Watermark & Keamanan", icon: ShieldCheck },
+  { href: "/converter", label: "Konversi", icon: FileOutput },
+  { href: "/compressor", label: "Kompresi", icon: Minimize2 },
+  { href: "/splitter", label: "Pisah halaman", icon: Scissors },
+  { href: "/merger", label: "Gabung berkas", icon: Combine },
+  { href: "/watermark", label: "Watermark & sandi", icon: ShieldCheck },
 ];
 
 export default function Sidebar() {
@@ -68,7 +72,7 @@ function SidebarContent() {
           <div className="sidebar-logo-mark" style={{ width: 26, height: 26 }}>
             <Sparkles size={14} strokeWidth={2} />
           </div>
-          <span style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink-black)" }}>
+          <span style={{ fontWeight: 500, fontSize: "15px", color: "var(--color-midnight-ink)" }}>
             SmartDoc
           </span>
         </div>
@@ -97,16 +101,17 @@ function SidebarContent() {
               <Sparkles size={16} strokeWidth={2} />
             </div>
             <div>
-              <h1>SmartDoc</h1>
-              <p>Document Workspace</p>
+              <span className="sidebar-wordmark">SmartDoc</span>
+              <p>{user?.role === "admin" ? "Administrasi layanan" : "Document Workspace"}</p>
             </div>
           </div>
 
           {/* Close button visible only in drawer mode on small screens */}
           <button
             onClick={() => setIsMobileOpen(false)}
+            aria-label="Tutup menu"
             style={{
-              color: "var(--color-ash-gray)",
+              color: "var(--color-graphite)",
               display: isMobileOpen ? "flex" : "none",
               alignItems: "center",
               justifyContent: "center",
@@ -121,6 +126,7 @@ function SidebarContent() {
         <nav className="sidebar-nav">
           {/* Main Dashboard Link */}
           <div className="sidebar-section-label">Navigasi Utama</div>
+          {user?.role === "admin" ? <AdminNavigation pathname={pathname} onNavigate={() => setIsMobileOpen(false)} /> : <>
           <Link
             href="/dashboard"
             className={`nav-link ${pathname === "/dashboard" ? "active" : ""}`}
@@ -131,18 +137,21 @@ function SidebarContent() {
           </Link>
 
           {/* Collapsible Dropdown: Alat Dokumen */}
+          <Link className={`nav-link ${pathname === "/dokumen" ? "active" : ""}`} href="/dokumen"><FolderOpen size={18} strokeWidth={1.75} />Dokumen saya</Link>
+          <Link className={`nav-link ${pathname === "/kalender" ? "active" : ""}`} href="/kalender"><CalendarDays size={18} strokeWidth={1.75} />Kalender</Link>
+          <Link className={`nav-link ${pathname === "/pengaturan" ? "active" : ""}`} href="/pengaturan"><Settings2 size={18} strokeWidth={1.75} />Profil & pengaturan</Link>
           <div style={{ marginTop: "6px" }}>
             <button
               type="button"
               onClick={() => setIsDocToolsOpen((prev) => !prev)}
+              aria-expanded={isDocToolsOpen}
               className={`nav-link ${isDocToolActive && !isDocToolsOpen ? "active" : ""}`}
               style={{
                 width: "100%",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
-                background: isDocToolActive ? "var(--color-stone-canvas)" : "transparent",
-                fontWeight: isDocToolActive ? 600 : 500,
+                fontWeight: 500,
                 border: "none",
                 cursor: "pointer",
               }}
@@ -151,16 +160,14 @@ function SidebarContent() {
                 <FileCog
                   size={17}
                   strokeWidth={1.75}
-                  style={{ color: isDocToolActive ? "var(--color-cyan-edge)" : "inherit" }}
                 />
-                <span style={{ color: isDocToolActive ? "var(--color-ink-black)" : "inherit" }}>
+                <span>
                   Alat Dokumen
                 </span>
               </div>
               <ChevronDown
                 size={15}
                 style={{
-                  color: isDocToolActive ? "var(--color-ink-black)" : "var(--color-ash-gray)",
                   transition: "transform 0.2s ease",
                   transform: isDocToolsOpen ? "rotate(180deg)" : "rotate(0deg)",
                 }}
@@ -178,7 +185,7 @@ function SidebarContent() {
                   marginTop: "2px",
                   marginLeft: "12px",
                   paddingLeft: "10px",
-                  borderLeft: "2px solid var(--color-stone-border)",
+                  borderLeft: "2px solid var(--color-ash)",
                 }}
               >
                 {docToolLinks.map(({ href, label, icon: Icon }) => {
@@ -192,7 +199,7 @@ function SidebarContent() {
                       style={{
                         padding: "7px 10px",
                         fontSize: "13px",
-                        fontWeight: isActive ? 600 : 400,
+                        fontWeight: 500,
                       }}
                     >
                       <Icon size={15} strokeWidth={1.75} />
@@ -215,57 +222,35 @@ function SidebarContent() {
               Riwayat Dokumen
             </Link>
           </div>
+          </>}
         </nav>
 
         {/* User Info + Logout */}
-        <div style={{
-          margin: "12px",
-          padding: "10px 12px",
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.07)",
-          borderRadius: "10px",
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-        }}>
+        <div className="sidebar-account">
           {/* Avatar */}
-          <div style={{
-            width: 32, height: 32, borderRadius: "50%",
-            background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0,
-            fontSize: "13px", fontWeight: 700, color: "white",
-          }}>
-            {user?.username?.[0]?.toUpperCase() ?? "U"}
+          <div className="sidebar-avatar">
+            {(user?.display_name || user?.username)?.[0]?.toUpperCase() ?? "U"}
           </div>
           {/* User info */}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-ink-black)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {user?.username ?? "User"}
+              <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-midnight-ink)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {user?.display_name || user?.username || "User"}
               </span>
               {user?.role === "admin" && (
-                <span style={{
-                  fontSize: "9px",
-                  fontWeight: 700,
-                  textTransform: "uppercase",
-                  padding: "1px 5px",
-                  borderRadius: "4px",
-                  background: "rgba(99, 102, 241, 0.12)",
-                  color: "#6366f1",
-                  border: "1px solid rgba(99, 102, 241, 0.25)",
-                }}>
+                <span className="sidebar-role">
                   Admin
                 </span>
               )}
             </div>
-            <div style={{ fontSize: "11px", color: "var(--color-ink-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div style={{ fontSize: "11px", color: "var(--color-graphite)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {user?.email ?? ""}
             </div>
           </div>
           {/* Logout button */}
           <button
             id="sidebar-logout-btn"
+            className="sidebar-logout"
             title="Keluar"
             disabled={isLoggingOut}
             onClick={async () => {
@@ -276,20 +261,10 @@ function SidebarContent() {
               if (done) router.replace("/");
               else setLogoutError(true);
             }}
-            style={{
-              background: "none", border: "none", cursor: "pointer",
-              padding: "5px", borderRadius: "7px",
-              color: "var(--color-ink-secondary)",
-              display: "flex", alignItems: "center",
-              transition: "color 0.2s, background 0.2s",
-              flexShrink: 0,
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = "#ef4444"; (e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.1)"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = "var(--color-ink-secondary)"; (e.currentTarget as HTMLButtonElement).style.background = "none"; }}
           >
             <LogOut size={15} strokeWidth={2} />
           </button>
-            {logoutError && <span role="alert" style={{ color: "#ef4444", fontSize: 12 }}>Gagal mengakhiri sesi. Coba lagi.</span>}
+            {logoutError && <span role="alert" className="guest-error">Gagal mengakhiri sesi. Coba lagi.</span>}
         </div>
       </aside>
     </>

@@ -1,0 +1,136 @@
+/* Application page hierarchy: compact headings, grouped sections and usable forms. */
+.main-content > .animate-fade-in { max-width: 1120px; margin-inline: auto; }
+.section-heading { display: grid; gap: 6px; min-width: 0; }
+.section-heading h2, .workspace-card .section-heading h2 {
+  display: flex; align-items: center; gap: 8px; font: 500 16px/1.4 var(--font-inter); color: var(--color-charcoal); letter-spacing: 0;
+}
+.section-heading p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-steel); }
+.dashboard-panel { gap: 20px; }
+.inline-empty { display: flex; align-items: center; gap: 12px; padding: 20px 16px; border-radius: 8px; background: var(--color-paper-mist); color: var(--color-fog); }
+.inline-empty svg { flex-shrink: 0; }
+.inline-empty p { margin: 0; font-size: 13px; }
+.reminder-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 12px; border-top: 1px solid var(--color-ash); }
+.reminder-row h3 { font-size: 14px; line-height: 1.5; }
+.reminder-row p { font-size: 13px; margin-top: 4px; }
+.workspace-tool-links { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.workspace-page .workspace-tool-links a {
+  display: flex; align-items: center; gap: 10px; padding: 16px 12px; min-height: 64px;
+  border: 1px solid var(--color-ash); border-radius: 8px; color: var(--color-charcoal); text-decoration: none; font-size: 13px;
+}
+.workspace-tool-links svg { flex-shrink: 0; color: var(--color-steel); }
+.workspace-page .workspace-tool-links a:hover { background: var(--color-paper-mist); color: var(--color-midnight-ink); }
+.planner-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 420px); gap: 24px; align-items: start; }
+.planner-agenda { display: grid; gap: 16px; min-width: 0; }
+.planner-layout .workspace-form { max-width: none; }
+.planner-layout .planner-list .workspace-card h2 { font-size: 16px; line-height: 1.4; }
+.planner-layout .planner-list .workspace-card > p { font-size: 13px; line-height: 1.5; }
+.planner-list .item-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.count-badge { padding: 1px 7px; min-width: 22px; border: 1px solid var(--color-ash); border-radius: var(--radius-tags); font-size: 11px; color: var(--color-steel); text-align: center; }
+.form-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.form-row--dates { grid-template-columns: 1fr; }
+.workspace-page .field-hint { font-size: 12px; line-height: 1.5; color: var(--color-steel); }
+.calendar-toolbar > :is(input, select) { flex: 0 1 220px; }
+.calendar-surface { padding: 12px; border: 1px solid var(--color-ash); border-radius: 12px; }
+.calendar-weekdays { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; }
+.calendar-weekdays span { padding: 4px 8px; font-size: 12px; color: var(--color-steel); }
+.calendar-workbench { grid-template-columns: minmax(320px, 420px) minmax(0, 1fr); }
+.planner-fields { display: grid; gap: 16px; border: 0; padding: 0; margin: 0; min-width: 0; }
+.calendar-navigation { display: flex; gap: 6px; }
+.calendar-navigation button { display: inline-flex; align-items: center; justify-content: center; }
+.calendar-period { font-size: 16px; font-weight: 500; margin: 0 0 16px; }
+.workspace-page .planner-notice { min-height: 20px; margin-top: -12px; font-size: 13px; }
+.planner-notice:empty { display: none; }
+.planner-item { cursor: grab; }
+.planner-item.dragging { opacity: .45; }
+.planner-item-heading { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.planner-item-heading > svg { flex-shrink: 0; color: var(--color-steel); }
+.planner-item-heading h3 { flex: 1; font-size: 15px; font-weight: 500; overflow-wrap: anywhere; }
+.planner-item .planner-item-date { font-size: 13px; }
+.planner-item .workspace-actions { flex-wrap: wrap; }
+.planner-filter { max-width: 100%; }
+.calendar-grid button.drop-target { background: var(--color-active-blue); outline: 2px dashed var(--color-electric-blue); outline-offset: -3px; }
+.calendar-surface.is-dragging .calendar-grid button { border-style: dashed; }
+.calendar-grid span[draggable=true] { cursor: grab; }
+.calendar-workbench .workspace-form { scroll-margin-top: 80px; }
+.calendar-category-toolbar > label { max-width: 280px; }
+.calendar-category-toolbar > label, .category-form .planner-fields > label { display: grid; gap: 8px; font-size: 13px; font-weight: 500; }
+.agenda-categories { display: block; }
+.agenda-categories > summary { cursor: pointer; font-size: 14px; font-weight: 500; }
+.agenda-categories > summary .count-badge { margin-left: 6px; }
+.agenda-categories[open] > .field-hint { margin-block: 12px 20px; }
+.category-manager-layout { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.category-color-field { border: 0; padding: 0; margin: 0; min-width: 0; }
+.category-color-field legend { margin-bottom: 8px; font-size: 13px; font-weight: 500; }
+.category-colors { display: flex; flex-wrap: wrap; gap: 6px; }
+.workspace-page .category-colors label { display: flex; align-items: center; justify-content: center; gap: 6px; min-width: 44px; min-height: 44px; border: 1px solid var(--color-ash); border-radius: 6px; cursor: pointer; }
+.category-colors label:has(input:checked) { border-color: var(--color-electric-blue); }
+.category-colors i { width: 12px; height: 12px; border-radius: 50%; }
+.category-list { display: grid; gap: 8px; }
+.category-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding-block: 8px; border-bottom: 1px solid var(--color-ash); }
+.category-row .workspace-actions { flex-wrap: wrap; }
+.agenda-category-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-steel); min-width: 0; overflow-wrap: anywhere; }
+.agenda-category-badge i, .calendar-category-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.calendar-category-dot { margin-right: 5px; }
+.admin-page-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.admin-page-heading > button { flex-shrink: 0; }
+.admin-quick-links, .admin-health-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.workspace-page .admin-quick-links a { color: var(--color-charcoal); text-decoration: none; }
+.admin-quick-links h2, .admin-notice h2, .admin-audit-entry h2 { font-size: 16px; line-height: 1.4; font-weight: 500; overflow-wrap: anywhere; }
+.admin-quick-links a:hover { background: var(--color-paper-mist); }
+.admin-health-grid .workspace-card { align-content: start; gap: 16px; }
+.admin-health-grid .badge { justify-self: start; }
+.admin-settings-list { display: grid; gap: 0; }
+.admin-settings-list > div { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--color-ash); }
+.admin-settings-list dt, .admin-audit-entry dt { color: var(--color-steel); font-size: 13px; }
+.admin-settings-list dd { font-size: 14px; text-align: right; }
+.admin-audit-entry dl { display: grid; gap: 12px; }
+.admin-audit-entry dd { font-size: 12px; overflow-wrap: anywhere; margin: 4px 0 0; }
+.admin-privacy-list { display: grid; gap: 12px; padding-left: 20px; color: var(--color-steel); font-size: 13px; line-height: 1.6; list-style: disc; }
+.admin-process-table td:first-child { min-width: 130px; }
+.admin-process-table td:nth-child(4) { min-width: 160px; }
+.admin-process-table code { font-size: 12px; }
+.admin-users-table :is(th, td):first-child { min-width: 48px; width: 48px; text-align: center; }
+.admin-users-table td:nth-child(2) { min-width: 230px; }
+.admin-users-table td:nth-child(2) { color: var(--color-charcoal); font-weight: 500; }
+.admin-users-table :is(th, td) { white-space: nowrap; }
+.admin-table-actions { display: flex; align-items: center; gap: 6px; }
+.workspace-page .admin-icon-action { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 36px; border: 1px solid var(--color-ash); border-radius: 6px; color: var(--color-steel); background: var(--color-canvas-white); padding: 6px; }
+.workspace-page .admin-icon-action:hover { background: var(--color-paper-mist); color: var(--color-charcoal); }
+.workspace-page .admin-icon-action--danger { color: var(--clr-error); }
+.admin-account-usage { display: grid; gap: 6px; min-width: 155px; font-size: 13px; }
+.admin-account-usage small { margin: 0; color: var(--color-steel); font-size: 11px; }
+.admin-account-usage progress { width: 100%; max-width: 280px; height: 6px; border: 0; border-radius: 999px; overflow: hidden; accent-color: var(--color-electric-blue); background: var(--color-paper-mist); }
+.admin-account-usage progress::-webkit-progress-bar { background: var(--color-paper-mist); }
+.admin-account-usage progress::-webkit-progress-value { background: var(--color-electric-blue); border-radius: 999px; }
+.admin-account-usage progress::-moz-progress-bar { background: var(--color-electric-blue); border-radius: 999px; }
+.admin-user-detail-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, 1fr); align-items: start; gap: 24px; }
+.admin-user-detail-layout .section-heading p { overflow-wrap: anywhere; }
+.admin-user-detail-layout .admin-settings-list dd { max-width: 60%; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.admin-user-detail-layout code { font-size: 12px; }
+.admin-account-access .planner-fields > label { display: grid; gap: 8px; font-size: 13px; }
+.admin-account-access .planner-fields > label.check-label { display: flex; align-items: center; }
+.admin-account-access .planner-fields > button, .admin-revoke-button { justify-self: start; }
+.admin-back-link { justify-self: start; font-size: 13px; }
+@media (max-width: 1100px) {
+  .admin-quick-links, .admin-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .planner-layout { grid-template-columns: 1fr; }
+  .workspace-tool-links { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .admin-user-detail-layout { grid-template-columns: 1fr; }
+  .form-row--dates { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .workspace-page .admin-icon-action { min-width: 44px; min-height: 44px; }
+  .admin-page-heading { flex-direction: column; }
+  .admin-quick-links, .admin-health-grid { grid-template-columns: 1fr; }
+  .category-manager-layout { grid-template-columns: 1fr; }
+  .ui-page-heading h1 { font-size: 24px; }
+  .guest-tool-picker a:last-child:nth-child(odd) { grid-column: 1 / -1; min-height: 140px; }
+  .guest-tool-picker a:last-child:nth-child(odd) p { max-width: none; }
+  .workspace-tool-links { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .calendar-toolbar { gap: 8px; }
+  .calendar-toolbar > :is(input, select) { flex: 1 1 130px; }
+  .calendar-surface { padding: 8px; }
+  .calendar-weekdays { gap: 4px; }
+  .calendar-weekdays span { padding-inline: 0; text-align: center; font-size: 11px; }
+  .form-row, .form-row--dates { grid-template-columns: 1fr; }
+}

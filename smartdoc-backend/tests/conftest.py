@@ -6,6 +6,7 @@ from app.core.security import create_access_token
 
 TEST_USER_ID = "1223bef8-242e-4e79-b4ff-4db9e450e1fa"
 TEST_USERNAME = "smartdoc_test"
+TEST_SESSION_ID = "a3a477a7-3a4b-4dde-8bbd-30aa31cfa900"
 
 
 @pytest.fixture(autouse=True)
@@ -24,6 +25,7 @@ def auth_token() -> str:
         "username": TEST_USERNAME,
         "role": "admin",
         "ver": 0,
+        "sid": TEST_SESSION_ID,
     })
 
 @pytest.fixture

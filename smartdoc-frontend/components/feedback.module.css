@@ -1,0 +1,17 @@
+.stack { position: fixed; z-index: 10000; right: 16px; bottom: max(16px, env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100vw - 32px)); pointer-events: none; }
+.toast { display: flex; align-items: flex-start; gap: 10px; padding: 14px 8px 14px 14px; background: var(--color-canvas-white, #fff); border: 1px solid var(--color-ash, #e5e7eb); border-radius: 12px; box-shadow: 0 8px 30px #00000014; color: var(--color-ink-black, #111); pointer-events: auto; }
+.toast > svg { flex-shrink: 0; margin-top: 2px; }
+.copy { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; line-height: 1.5; }
+.copy strong { font-weight: 600; }
+.copy p { margin: 3px 0 0; color: var(--color-graphite, #525252); }
+.success > svg { color: var(--clr-success, #166534); }
+.error > svg { color: var(--clr-error, #b91c1c); }
+.warning > svg { color: var(--clr-warning, #92400e); }
+.info > svg { color: var(--color-electric-blue, #2563eb); }
+.close { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; margin-top: -8px; padding: 0; background: transparent; color: inherit; border: 0; border-radius: 8px; cursor: pointer; }
+.close:hover { background: #00000006; }
+.close:focus-visible { outline: 3px solid var(--color-electric-blue, #2563eb); outline-offset: 2px; }
+.notice { display: flex; align-items: flex-start; gap: 10px; padding: 16px; border: 1px solid var(--clr-success-border, #bbf7d0); border-radius: 10px; background: var(--clr-success-bg, #f0fdf4); color: var(--clr-success, #166534); overflow-wrap: anywhere; }
+.notice > svg { flex-shrink: 0; margin-top: 2px; }
+.notice p { margin: 4px 0 0; line-height: 1.6; }
+.notice a { display: inline-flex; min-height: 44px; align-items: center; margin-top: 12px; }

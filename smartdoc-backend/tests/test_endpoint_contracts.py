@@ -15,9 +15,16 @@ from app.db.base import get_db
 async def isolated_client():
     user = SimpleNamespace(id=uuid4())
     db = AsyncMock()
-    result = MagicMock()
-    result.scalar_one_or_none.return_value = None
-    db.execute.return_value = result
+    async def execute(statement, *args, **kwargs):
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        # Admission is part of the real dependency chain: model its lock/count
+        # contract rather than comparing a MagicMock with integer capacity.
+        result.scalar_one.return_value = "pg_try_advisory_xact_lock" in str(statement)
+        if "count(" in str(statement).lower():
+            result.scalar_one.return_value = 0
+        return result
+    db.execute.side_effect = execute
 
     async def database():
         yield db

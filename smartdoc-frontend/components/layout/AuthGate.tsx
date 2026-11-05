@@ -1,29 +1,30 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/AuthContext";
 import Sidebar from "@/components/layout/Sidebar";
-import { getLoginPath } from "@/lib/auth-token";
+import { getHomePath, getLoginPath } from "@/lib/auth-token";
+import ErrorScreen from "@/components/errors/ErrorScreen";
 
 /** Protects the user route group and renders the application shell. */
 export default function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, authError, retryAuth } = useAuth();
+  const { user, isAuthenticated, isLoading, authError, authErrorStatus, isLoggingOut, retryAuth } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const adminArea = pathname === "/administration" || pathname.startsWith("/administration/");
 
 
   useEffect(() => {
-    if (isLoading || authError) return;
+    if (isLoading || authError || isLoggingOut) return;
     if (!isAuthenticated) {
       router.replace(getLoginPath());
+    } else if (user && !user.onboarding_complete) {
+      router.replace("/auth/onboarding");
     }
-  }, [isAuthenticated, isLoading, authError, router]);
+  }, [user, isAuthenticated, isLoading, authError, isLoggingOut, router, adminArea]);
 
-  if (authError && !isAuthenticated) {
-    return <div role="alert">Koneksi ke server terputus. Sesi Anda masih tersimpan. <button type="button" onClick={retryAuth}>Coba lagi</button></div>;
-  }
-
-  // Loading: validasi token sedang berlangsung — pakai tone Seline Analytics
+  // Validate the session before rendering the private workspace.
   if (isLoading) {
     return (
       <div
@@ -33,7 +34,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "var(--color-stone-canvas)",
+          backgroundColor: "var(--color-canvas-white)",
           gap: "14px",
         }}
       >
@@ -41,8 +42,8 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
           style={{
             width: 34,
             height: 34,
-            border: "2.5px solid var(--color-stone-muted)",
-            borderTopColor: "var(--color-cyan-signal)",
+            border: "2.5px solid var(--color-smoke)",
+            borderTopColor: "var(--color-electric-blue)",
             borderRadius: "50%",
             animation: "spin 0.7s linear infinite",
           }}
@@ -50,7 +51,7 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
         <span
           style={{
             fontSize: "13px",
-            color: "var(--color-warm-gray)",
+            color: "var(--color-graphite)",
             fontWeight: 500,
           }}
         >
@@ -61,9 +62,17 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
     );
   }
 
+  if (authErrorStatus) {
+    return <ErrorScreen status={authErrorStatus} onRetry={authErrorStatus === 403 ? undefined : retryAuth} />;
+  }
+
   // Belum auth dan bukan login page — jangan render sambil redirect
   if (!isAuthenticated) {
     return null;
+  }
+  if (!user?.onboarding_complete) return null;
+  if ((user.role === "admin") !== adminArea) {
+    return <ErrorScreen status={403} homeHref={getHomePath(user.role)} homeLabel="Ke halaman saya" />;
   }
 
   // Authenticated — render layout utama dengan Sidebar

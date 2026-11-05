@@ -1,23 +1,23 @@
 import type { ApiResponse } from "./types";
-import { getToken, handleUnauthorized } from "../auth-token";
-export const API_BASE = typeof window !== "undefined" ? "" : (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000");
+import { handleUnauthorized } from "../auth-token";
+import { sessionFetch } from "../session";
+export { API_BASE } from "../session";
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<ApiResponse<T>> {
   try {
-    const token = getToken();
     const headers = new Headers(init?.headers);
     if (!headers.has("Accept")) headers.set("Accept", "application/json");
-    if (token) headers.set("Authorization", `Bearer ${token}`);
 
-    const res = await fetch(`${API_BASE}${path}`, {
+    const res = await sessionFetch(path, {
       ...init,
       headers,
     });
 
     // Auto-redirect ke /login jika token expired atau tidak ada
     if (res.status === 401 && typeof window !== "undefined") {
-      handleUnauthorized(token);
+      handleUnauthorized();
       return {
+        httpStatus: res.status,
         success: false,
         data: null,
         message: "Sesi berakhir. Silakan login kembali.",
@@ -25,10 +25,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<Api
       };
     }
 
+    if (res.status === 204) {
+      return { httpStatus: 204, success: true, data: null, message: "Selesai", error: null };
+    }
     const json = (await res.json().catch(() => null)) as ApiResponse<T> | null;
 
     if (!res.ok) {
       return {
+        httpStatus: res.status,
         success: false,
         data: null,
         message: json?.message || `HTTP Error ${res.status}`,
@@ -36,15 +40,16 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<Api
       };
     }
 
-    if (json && typeof json === "object" && "success" in json) {
-      return json;
+    if (json && typeof json === "object" && typeof json.success === "boolean") {
+      return { ...json, data: json.success ? json.data ?? null : null, httpStatus: res.status };
     }
 
     return {
-      success: true,
-      data: json as unknown as T,
-      message: "OK",
-      error: null,
+      httpStatus: res.status,
+      success: false,
+      data: null,
+      message: "Respons server tidak valid. Periksa status sebelum mencoba lagi.",
+      error: "INVALID_RESPONSE",
     };
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : "Network error";

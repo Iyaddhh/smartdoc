@@ -8,6 +8,7 @@ export async function getMergerDocInfo(file: File): Promise<ApiResponse<{ filena
 }
 
 export async function mergeDocuments(params: {
+  saveToWorkspace?: boolean;
   files: File[];
   mergeMode?: "sequence" | "insert";
   insertPosition?: "start" | "end" | "custom";
@@ -15,6 +16,7 @@ export async function mergeDocuments(params: {
   customTitle?: string;
 }): Promise<ApiResponse<{ job_id: string; document_id: string; file_count: number; custom_name: string }>> {
   const form = new FormData();
+  form.append("save_to_workspace", String(params.saveToWorkspace ?? false));
   params.files.forEach((file) => {
     form.append("files", file);
   });

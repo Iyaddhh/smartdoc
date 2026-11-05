@@ -1,5 +1,8 @@
 "use client";
 
+import { formatBytes } from "@/lib/format";
+import { validateUpload, MAX_PPTX_MB, MAX_DOC_MB, MAX_IMAGE_MB } from "@/lib/file-validation";
+
 import { useState, useRef, useEffect, DragEvent } from "react";
 import { createPortal } from "react-dom";
 import { useClientReady } from "@/hooks/useClientReady";
@@ -22,32 +25,30 @@ interface FileUploadProps {
   label?: string;
   description?: string;
   maxSizeMB?: number;
-  onFileSelected?: (file: File) => void;
+  allowLargePptx?: boolean;
+  onFileSelected?: (file: File) => void | boolean | Promise<void | boolean>;
   onFilesSelected?: (files: File[]) => void;
   onFileClear?: () => void;
   onLoadingChange?: (loading: boolean) => void;
   disabled?: boolean;
   multiple?: boolean;
+  previewFile?: typeof fetchFirstPagePreview;
 }
 
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
 
 export default function FileUpload({
   accept,
   label = "Unggah Dokumen",
   description = "Seret & lepas berkas ke sini atau klik untuk memilih",
   maxSizeMB = 50,
+  allowLargePptx = false,
   onFileSelected,
   onFilesSelected,
   onFileClear,
   onLoadingChange,
   disabled = false,
   multiple = false,
+  previewFile = fetchFirstPagePreview,
 }: FileUploadProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
@@ -66,15 +67,25 @@ export default function FileUpload({
   const [viewMode, setViewMode] = useState<"pages" | "native">("pages");
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const selectionVersion = useRef(0);
+  const objectUrls = useRef(new Set<string>());
+
+  useEffect(() => {
+    const urls = objectUrls.current;
+    const version = selectionVersion;
+    return () => {
+      version.current++;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      urls.clear();
+    };
+  }, []);
 
 
   // Handle ESC key & lock body scroll when modal is open
   useEffect(() => {
-    if (isZoomed) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    if (!isZoomed) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isZoomed) {
@@ -84,101 +95,52 @@ export default function FileUpload({
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
     };
   }, [isZoomed]);
 
-  const MAX_DOC_MB = 35;
-  const MAX_IMAGE_MB = 12;
-  const MAX_IMAGE_DIM_PX = 10000;
-
-  const getMaxMbForFile = (filename: string): number => {
-    const ext = filename.split(".").pop()?.toLowerCase() || "";
-    if (["jpg", "jpeg", "png"].includes(ext)) {
-      return Math.min(maxSizeMB, MAX_IMAGE_MB);
-    }
-    if (["pdf", "docx", "xlsx", "pptx"].includes(ext)) {
-      return Math.min(maxSizeMB, MAX_DOC_MB);
-    }
-    return maxSizeMB;
-  };
-
-  const validateFile = (file: File): Promise<boolean> => {
-    return new Promise((resolve) => {
-      const allowedMb = getMaxMbForFile(file.name);
-      const maxBytes = allowedMb * 1024 * 1024;
-      if (file.size > maxBytes) {
-        setValidationError(
-          `Ukuran berkas (${formatBytes(file.size)}) melebihi batas maksimal ${allowedMb} MB.`
-        );
-        return resolve(false);
-      }
-
-      if (accept) {
-        const allowedExts = accept.split(",").map((ext) => ext.trim().toLowerCase());
-        const fileExt = "." + file.name.split(".").pop()?.toLowerCase();
-        if (!allowedExts.includes(fileExt)) {
-          setValidationError(`Format file "${fileExt}" tidak didukung. Format yang diterima: ${accept}`);
-          return resolve(false);
-        }
-      }
-
-      const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      if (["jpg", "jpeg", "png"].includes(ext)) {
-        const img = new Image();
-        const objUrl = URL.createObjectURL(file);
-        img.onload = () => {
-          URL.revokeObjectURL(objUrl);
-          if (img.width > MAX_IMAGE_DIM_PX || img.height > MAX_IMAGE_DIM_PX) {
-            setValidationError(
-              `Dimensi gambar (${img.width}x${img.height}px) melebihi batas maksimum ${MAX_IMAGE_DIM_PX}px.`
-            );
-            resolve(false);
-          } else {
-            setValidationError(null);
-            resolve(true);
-          }
-        };
-        img.onerror = () => {
-          URL.revokeObjectURL(objUrl);
-          setValidationError("Berkas gambar tidak dapat dibaca atau corrupt.");
-          resolve(false);
-        };
-        img.src = objUrl;
-        return;
-      }
-
-      setValidationError(null);
-      resolve(true);
-    });
-  };
-
-  const loadThumbnail = async (file: File) => {
+  const loadThumbnail = async (file: File, version: number) => {
     const ext = file.name.split(".").pop()?.toLowerCase() || "";
+    objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrls.current.clear();
+    setThumbnailUrl(null);
+    setAllThumbnails([]);
+    setTotalPages(1);
+    setViewMode("pages");
 
     // 1. If PDF, create direct Blob URL for native vector view
     if (ext === "pdf") {
       const blobUrl = URL.createObjectURL(file);
+      objectUrls.current.add(blobUrl);
       setPdfBlobUrl(blobUrl);
     } else {
       setPdfBlobUrl(null);
     }
 
+    // PPTX compression keeps the original package; rendering a full presentation
+    // for a thumbnail is unnecessary and may hit PDF page limits.
+    if (allowLargePptx && ext === "pptx") {
+      setLoadingThumbnail(false);
+      return;
+    }
+
     // 2. Direct object URL for local image formats
     if (["jpg", "jpeg", "png", "gif"].includes(ext)) {
       const objUrl = URL.createObjectURL(file);
+      objectUrls.current.add(objUrl);
       setThumbnailUrl(objUrl);
       setAllThumbnails([objUrl]);
       setTotalPages(1);
       return;
     }
 
-    // 3. Fetch multi-page thumbnails from backend (Lossless PNG 160 DPI)
+    // 3. Fetch document thumbnails from the configured preview service.
     setLoadingThumbnail(true);
     setThumbnailUrl(null);
     setAllThumbnails([]);
     try {
-      const res = await fetchFirstPagePreview(file);
+      const res = await previewFile(file);
+      if (version !== selectionVersion.current) return;
       if (res.success && res.data) {
         if (res.data.thumbnail) setThumbnailUrl(res.data.thumbnail);
         if (res.data.thumbnails && res.data.thumbnails.length > 0) {
@@ -192,32 +154,34 @@ export default function FileUpload({
     } catch {
       // Fallback silently
     } finally {
-      setLoadingThumbnail(false);
+      if (version === selectionVersion.current) setLoadingThumbnail(false);
     }
   };
 
   const handleFile = async (file: File) => {
+    const version = ++selectionVersion.current;
     setIsValidating(true);
     onLoadingChange?.(true);
     setValidationError(null);
 
     try {
-      const isValid = await validateFile(file);
-      if (isValid) {
+      const validation = await validateUpload(file, { accept, maxSizeMB, allowLargePptx });
+      if (version !== selectionVersion.current) return;
+      setValidationError(validation.error || null);
+      if (validation.valid) {
+        const accepted = await onFileSelected?.(file);
+        if (accepted === false || version !== selectionVersion.current) return;
         setSelectedFile(file);
-        onFileSelected?.(file);
-        await loadThumbnail(file);
-      } else {
-        setSelectedFile(null);
-        setThumbnailUrl(null);
-        setAllThumbnails([]);
-        setPdfBlobUrl(null);
-        if (inputRef.current) inputRef.current.value = "";
-        onFileClear?.();
+        await loadThumbnail(file, version);
       }
+    } catch {
+      if (version === selectionVersion.current) setValidationError("Berkas gagal dipilih. Silakan coba lagi.");
     } finally {
-      setIsValidating(false);
-      onLoadingChange?.(false);
+      if (version === selectionVersion.current) {
+        setIsValidating(false);
+        if (inputRef.current) inputRef.current.value = "";
+        onLoadingChange?.(false);
+      }
     }
   };
 
@@ -226,6 +190,10 @@ export default function FileUpload({
     setIsDragging(false);
     if (disabled || isValidating) return;
     const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length > 1 && !multiple && !onFilesSelected) {
+      setValidationError("Pilih satu berkas saja.");
+      return;
+    }
     if (droppedFiles.length > 1 && onFilesSelected) {
       onFilesSelected(droppedFiles);
     } else if (droppedFiles.length > 0) {
@@ -238,6 +206,7 @@ export default function FileUpload({
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (disabled || isValidating) return;
     const selectedFiles = e.target.files ? Array.from(e.target.files) : [];
     if (selectedFiles.length > 1 && onFilesSelected) {
       onFilesSelected(selectedFiles);
@@ -254,6 +223,13 @@ export default function FileUpload({
 
   const clearFile = (e: React.MouseEvent) => {
     e.stopPropagation();
+    selectionVersion.current++;
+    objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrls.current.clear();
+    setIsValidating(false);
+    setLoadingThumbnail(false);
+    setIsZoomed(false);
+    setTotalPages(1);
     setSelectedFile(null);
     setThumbnailUrl(null);
     setAllThumbnails([]);
@@ -295,14 +271,14 @@ export default function FileUpload({
         <div
           className="card animate-fade-in"
           style={{
-            padding: "24px 20px",
+            padding: "var(--card-padding)",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             gap: "10px",
-            background: "var(--color-stone-canvas)",
-            border: "1px dashed var(--color-cyan-edge)",
+            background: "var(--color-canvas-white)",
+            border: "1px solid var(--color-ash)",
             borderRadius: "var(--radius-cards)",
             textAlign: "center",
           }}
@@ -312,20 +288,20 @@ export default function FileUpload({
               width: "40px",
               height: "40px",
               borderRadius: "50%",
-              background: "var(--color-sky-wash)",
+              background: "var(--color-active-blue)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              color: "var(--color-cyan-edge)",
+              color: "var(--color-electric-blue)",
             }}
           >
             <span className="animate-spin" style={{ fontSize: "18px" }}>⟳</span>
           </div>
           <div>
-            <p style={{ fontSize: "13.5px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+            <p style={{ fontSize: "13.5px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
               Memeriksa & Menyiapkan Dokumen...
             </p>
-            <p style={{ fontSize: "12px", color: "var(--color-warm-gray)", marginTop: "2px", margin: 0 }}>
+            <p style={{ fontSize: "12px", color: "var(--color-graphite)", marginTop: "2px", margin: 0 }}>
               Memvalidasi struktur berkas dan memuat konfigurasi
             </p>
           </div>
@@ -337,7 +313,7 @@ export default function FileUpload({
             display: "flex",
             alignItems: "center",
             gap: "16px",
-            padding: "14px 16px",
+            padding: "var(--card-padding)",
             cursor: "default",
             position: "relative",
             overflow: "hidden",
@@ -348,10 +324,10 @@ export default function FileUpload({
             style={{
               width: 58,
               height: 72,
-              borderRadius: "6px",
-              background: "#f4f4f5",
-              border: "1px solid var(--color-stone-border)",
-              boxShadow: "0 2px 6px rgba(0,0,0,0.06)",
+              borderRadius: "var(--radius-cardssmall)",
+              background: "var(--color-paper-mist)",
+              border: "1px solid var(--color-ash)",
+              boxShadow: "none",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -381,10 +357,10 @@ export default function FileUpload({
                     position: "absolute",
                     top: 2,
                     left: 2,
-                    background: "rgba(12, 10, 9, 0.8)",
-                    color: "#fff",
+                    background: "rgba(10, 10, 10, 0.8)",
+                    color: "var(--color-canvas-white)",
                     fontSize: "9px",
-                    fontWeight: 600,
+                    fontWeight: 500,
                     padding: "1px 4px",
                     borderRadius: "3px",
                     lineHeight: 1,
@@ -397,8 +373,8 @@ export default function FileUpload({
                     position: "absolute",
                     bottom: 2,
                     right: 2,
-                    background: "rgba(12, 10, 9, 0.65)",
-                    color: "#fff",
+                    background: "rgba(10, 10, 10, 0.65)",
+                    color: "var(--color-canvas-white)",
                     borderRadius: "3px",
                     padding: "2px",
                     display: "flex",
@@ -419,7 +395,7 @@ export default function FileUpload({
                   alignItems: "center",
                   justifyContent: "center",
                   fontSize: "9px",
-                  color: "var(--color-ash-gray)",
+                  color: "var(--color-graphite)",
                   textAlign: "center",
                   padding: "4px",
                 }}
@@ -428,8 +404,8 @@ export default function FileUpload({
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
-                <FileText size={20} strokeWidth={1.5} style={{ color: "var(--color-cyan-edge)" }} />
-                <span style={{ fontSize: "9px", color: "var(--color-ash-gray)", fontWeight: 500 }}>Hal 1</span>
+                <FileText size={20} strokeWidth={1.5} style={{ color: "var(--color-electric-blue)" }} />
+                <span style={{ fontSize: "9px", color: "var(--color-graphite)", fontWeight: 500 }}>Hal 1</span>
               </div>
             )}
           </div>
@@ -438,9 +414,9 @@ export default function FileUpload({
           <div style={{ flex: 1, minWidth: 0 }}>
             <p
               style={{
-                fontWeight: 600,
+                fontWeight: 500,
                 fontSize: "13.5px",
-                color: "var(--color-ink-black)",
+                color: "var(--color-midnight-ink)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
@@ -449,10 +425,10 @@ export default function FileUpload({
               {selectedFile.name}
             </p>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "3px", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "12px", color: "var(--color-warm-gray)" }}>
+              <span style={{ fontSize: "12px", color: "var(--color-graphite)" }}>
                 {formatBytes(selectedFile.size)}
               </span>
-              <span style={{ color: "var(--color-stone-muted)" }}>•</span>
+              <span style={{ color: "var(--color-smoke)" }}>•</span>
               <span style={{ fontSize: "11.5px", color: "var(--clr-success)", fontWeight: 500, display: "flex", alignItems: "center", gap: "4px" }}>
                 {totalPages > 1 ? `${totalPages} Halaman tersedia` : (thumbnailUrl || pdfBlobUrl) ? "Pratinjau siap" : "Berkas siap"}
               </span>
@@ -462,8 +438,8 @@ export default function FileUpload({
                   onClick={handleOpenModal}
                   style={{
                     fontSize: "11.5px",
-                    fontWeight: 600,
-                    color: "var(--color-cyan-edge)",
+                    fontWeight: 500,
+                    color: "var(--color-electric-blue)",
                     background: "none",
                     border: "none",
                     padding: 0,
@@ -493,8 +469,18 @@ export default function FileUpload({
       ) : (
         <div
           className={`dropzone ${isDragging ? "dragging" : ""}`}
+          role="button"
+          tabIndex={disabled ? -1 : 0}
+          aria-label={label}
+          aria-disabled={disabled}
           onClick={() => !disabled && inputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onKeyDown={(event) => {
+            if (!disabled && (event.key === "Enter" || event.key === " ")) {
+              event.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+          onDragOver={(e) => { e.preventDefault(); if (!disabled) setIsDragging(true); }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
           style={{
@@ -506,22 +492,24 @@ export default function FileUpload({
           <div className="dropzone-icon">
             <Upload size={38} strokeWidth={1.5} />
           </div>
-          <p style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-ink-black)", marginBottom: "4px" }}>
+          <p style={{ fontWeight: 500, fontSize: "14px", color: "var(--color-midnight-ink)", marginBottom: "4px" }}>
             {label}
           </p>
-          <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
+          <p style={{ fontSize: "13px", color: "var(--color-graphite)" }}>
             {description}
           </p>
           {accept && (
-            <p style={{ fontSize: "11px", color: "var(--color-ash-gray)", marginTop: "8px" }}>
-              Maksimum {maxSizeMB} MB · Format: {accept.replace(/\./g, "").toUpperCase()}
+            <p style={{ fontSize: "11px", color: "var(--color-graphite)", marginTop: "8px" }}>
+              {allowLargePptx
+                ? `PPTX maksimal ${Math.min(maxSizeMB, MAX_PPTX_MB)} MB; dokumen lain ${Math.min(maxSizeMB, MAX_DOC_MB)} MB; gambar ${Math.min(maxSizeMB, MAX_IMAGE_MB)} MB`
+                : `Maksimum ${maxSizeMB} MB`} · Format: {accept.replace(/\./g, "").toUpperCase()}
             </p>
           )}
         </div>
       )}
 
       {validationError && (
-        <div className="alert alert-error animate-fade-in" style={{ padding: "10px 14px" }}>
+        <div role="alert" className="alert alert-error animate-fade-in" style={{ padding: "10px 14px" }}>
           <AlertCircle size={15} style={{ flexShrink: 0 }} />
           <span>{validationError}</span>
         </div>
@@ -534,7 +522,7 @@ export default function FileUpload({
         multiple={multiple}
         onChange={handleChange}
         style={{ display: "none" }}
-        disabled={disabled}
+        disabled={disabled || isValidating}
       />
 
       {/* =========================================================================
@@ -542,6 +530,10 @@ export default function FileUpload({
           ========================================================================= */}
       {mounted && isZoomed && (displayPages.length > 0 || pdfBlobUrl) && createPortal(
         <div
+          className="file-upload-preview"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Pratinjau dokumen"
           onClick={() => setIsZoomed(false)}
           style={{
             position: "fixed",
@@ -551,7 +543,7 @@ export default function FileUpload({
             height: "100vh",
             margin: 0,
             padding: 0,
-            background: "rgba(10, 9, 8, 0.82)",
+            background: "rgba(10, 10, 10, 0.82)",
             backdropFilter: "blur(14px)",
             WebkitBackdropFilter: "blur(14px)",
             zIndex: 999999,
@@ -564,6 +556,7 @@ export default function FileUpload({
         >
           {/* Floating Sticky Header Controls */}
           <div
+            className="file-upload-preview-toolbar"
             onClick={(e) => e.stopPropagation()}
             style={{
               position: "absolute",
@@ -574,28 +567,28 @@ export default function FileUpload({
               background: "rgba(255, 255, 255, 0.96)",
               backdropFilter: "blur(12px)",
               WebkitBackdropFilter: "blur(12px)",
-              borderRadius: "14px",
+              borderRadius: "8px",
               padding: "10px 20px",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              boxShadow: "0 10px 36px rgba(0,0,0,0.35)",
+              boxShadow: "none",
               border: "1px solid rgba(255,255,255,0.6)",
               zIndex: 100,
             }}
           >
             {/* File Info */}
-            <div style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
+            <div className="file-upload-preview-info" style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}>
               <div
                 style={{
                   width: 34,
                   height: 34,
-                  borderRadius: "8px",
-                  background: "var(--color-stone-canvas)",
+                  borderRadius: "var(--radius-cardssmall)",
+                  background: "var(--color-canvas-white)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  color: "var(--color-cyan-edge)",
+                  color: "var(--color-electric-blue)",
                   flexShrink: 0,
                 }}
               >
@@ -604,9 +597,9 @@ export default function FileUpload({
               <div style={{ minWidth: 0 }}>
                 <p
                   style={{
-                    fontWeight: 600,
+                    fontWeight: 500,
                     fontSize: "14px",
-                    color: "var(--color-ink-black)",
+                    color: "var(--color-midnight-ink)",
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     whiteSpace: "nowrap",
@@ -615,16 +608,16 @@ export default function FileUpload({
                 >
                   {selectedFile?.name}
                 </p>
-                <p style={{ fontSize: "12px", color: "var(--color-warm-gray)", marginTop: "1px" }}>
+                <p style={{ fontSize: "12px", color: "var(--color-graphite)", marginTop: "1px" }}>
                   {isPdf && pdfBlobUrl && viewMode === "native"
                     ? "Mode Pembaca PDF Asli (Vektor Tajam 100%)"
-                    : `${displayPages.length} Halaman · Gulir ke bawah untuk melihat halaman berikutnya`}
+                    : displayPages.length ? `${displayPages.length} Halaman · Gulir ke bawah untuk melihat halaman berikutnya` : "Pratinjau halaman belum tersedia"}
                 </p>
               </div>
             </div>
 
             {/* Controls & View Mode Toggle */}
-            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <div className="file-upload-preview-actions" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               {/* PDF Native Mode Switch */}
               {isPdf && pdfBlobUrl && (
                 <button
@@ -645,9 +638,9 @@ export default function FileUpload({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    background: "var(--color-stone-canvas)",
+                    background: "var(--color-canvas-white)",
                     borderRadius: "var(--radius-buttons)",
-                    border: "1px solid var(--color-stone-border)",
+                    border: "1px solid var(--color-ash)",
                     padding: "2px",
                   }}
                 >
@@ -658,7 +651,7 @@ export default function FileUpload({
                     title="Perkecil (Zoom Out)"
                     style={{
                       padding: "6px 9px",
-                      color: zoomScale <= 0.5 ? "var(--color-stone-muted)" : "var(--color-ink-black)",
+                      color: zoomScale <= 0.5 ? "var(--color-smoke)" : "var(--color-midnight-ink)",
                       cursor: zoomScale <= 0.5 ? "default" : "pointer",
                       display: "flex",
                       alignItems: "center",
@@ -670,10 +663,10 @@ export default function FileUpload({
                   <span
                     style={{
                       fontSize: "12px",
-                      fontWeight: 600,
+                      fontWeight: 500,
                       minWidth: "50px",
                       textAlign: "center",
-                      color: "var(--color-ink-black)",
+                      color: "var(--color-midnight-ink)",
                       userSelect: "none",
                     }}
                   >
@@ -687,7 +680,7 @@ export default function FileUpload({
                     title="Perbesar (Zoom In)"
                     style={{
                       padding: "6px 9px",
-                      color: zoomScale >= 2.5 ? "var(--color-stone-muted)" : "var(--color-ink-black)",
+                      color: zoomScale >= 2.5 ? "var(--color-smoke)" : "var(--color-midnight-ink)",
                       cursor: zoomScale >= 2.5 ? "default" : "pointer",
                       display: "flex",
                       alignItems: "center",
@@ -702,8 +695,8 @@ export default function FileUpload({
                     title="Reset Zoom (100%)"
                     style={{
                       padding: "6px 9px",
-                      borderLeft: "1px solid var(--color-stone-border)",
-                      color: "var(--color-warm-gray)",
+                      borderLeft: "1px solid var(--color-ash)",
+                      color: "var(--color-graphite)",
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
@@ -739,15 +732,16 @@ export default function FileUpload({
           {viewMode === "native" && pdfBlobUrl ? (
             /* Native Vector PDF Viewport */
             <div
+              className="file-upload-preview-viewport"
               onClick={(e) => e.stopPropagation()}
               style={{
                 width: "min(1100px, 96vw)",
                 height: "calc(100vh - 120px)",
                 marginTop: "84px",
-                borderRadius: "12px",
+                borderRadius: "var(--radius-cardssmall)",
                 overflow: "hidden",
-                boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
-                background: "#ffffff",
+                boxShadow: "none",
+                background: "var(--color-canvas-white)",
               }}
             >
               <iframe
@@ -759,6 +753,7 @@ export default function FileUpload({
           ) : (
             /* Multi-Page Ultra-HD Scrollable Canvas */
             <div
+              className="file-upload-preview-pages"
               onClick={(e) => e.stopPropagation()}
               style={{
                 width: "100vw",
@@ -776,6 +771,10 @@ export default function FileUpload({
                 boxSizing: "border-box",
               }}
             >
+              {displayPages.length === 0 && <div className="card" role="status" style={{ maxWidth: 420, textAlign: "center", display: "grid", gap: 12 }}>
+                <p>{loadingThumbnail ? "Menyiapkan pratinjau halaman…" : "Pratinjau halaman belum berhasil dimuat. Silakan coba lagi."}</p>
+                <button type="button" className="btn btn-secondary" disabled={loadingThumbnail} onClick={() => { if (selectedFile) void loadThumbnail(selectedFile, selectionVersion.current); }}>Coba ulang halaman</button>
+              </div>}
               {displayPages.map((pageSrc, idx) => (
                 <div
                   key={idx}
@@ -794,15 +793,15 @@ export default function FileUpload({
                   {/* Page Number Badge */}
                   <div
                     style={{
-                      background: "rgba(12, 10, 9, 0.88)",
-                      color: "#fff",
+                      background: "rgba(10, 10, 10, 0.88)",
+                      color: "var(--color-canvas-white)",
                       fontSize: "11.5px",
-                      fontWeight: 600,
+                      fontWeight: 500,
                       padding: "4px 14px",
                       borderRadius: "9999px",
                       backdropFilter: "blur(6px)",
-                      boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
-                      letterSpacing: "0.02em",
+                      boxShadow: "none",
+                      letterSpacing: "-0.01em",
                     }}
                   >
                     Halaman {idx + 1} dari {displayPages.length}
@@ -811,9 +810,9 @@ export default function FileUpload({
                   {/* Page Container */}
                   <div
                     style={{
-                      background: "#ffffff",
-                      borderRadius: "8px",
-                      boxShadow: "0 20px 50px rgba(0,0,0,0.45)",
+                      background: "var(--color-canvas-white)",
+                      borderRadius: "var(--radius-cardssmall)",
+                      boxShadow: "none",
                       border: "1px solid rgba(255,255,255,0.25)",
                       overflow: "hidden",
                       width: "100%",
@@ -855,7 +854,7 @@ export default function FileUpload({
               pointerEvents: "none",
             }}
           >
-            Tekan <kbd style={{ padding: "1px 6px", background: "rgba(255,255,255,0.25)", borderRadius: "4px" }}>Esc</kbd> atau klik di luar dokumen untuk menutup
+            Tekan <kbd style={{ padding: "1px 6px", background: "rgba(255,255,255,0.25)", borderRadius: "var(--radius-cardssmall)" }}>Esc</kbd> atau klik di luar dokumen untuk menutup
           </div>
         </div>,
         document.body

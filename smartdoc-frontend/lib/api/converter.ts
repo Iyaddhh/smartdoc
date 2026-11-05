@@ -4,9 +4,11 @@ import type { ApiResponse } from "./types";
 export async function convertFile(
   files: File | File[],
   outputFormat: string,
-  customTitle?: string
+  customTitle?: string,
+  saveToWorkspace = false
 ): Promise<ApiResponse<{ job_id: string; document_id: string; output_format: string }>> {
   const form = new FormData();
+  form.append("save_to_workspace", String(saveToWorkspace));
   if (Array.isArray(files)) {
     files.forEach((f) => form.append("files", f));
   } else {

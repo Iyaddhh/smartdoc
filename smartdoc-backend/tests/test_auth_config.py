@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import Settings, settings
-from app.core.security import TokenResponse, create_access_token
+from app.core.security import TokenResponse, create_access_token, TOKEN_AUDIENCE
 
 
 @pytest.mark.parametrize("value,seconds", [("15m", 900), ("7d", 604800), ("30d", 2592000)])
@@ -27,8 +27,8 @@ def test_insecure_cross_site_cookie_rejected():
 
 def test_access_token_uses_configured_expiry():
     before = datetime.now(timezone.utc).timestamp()
-    token = create_access_token({"sub": str(uuid4()), "ver": 0})
-    payload = jwt.decode(token, settings.JWT_ACCESS_SECRET, algorithms=["HS256"])
+    token = create_access_token({"sub": str(uuid4()), "sid": str(uuid4()), "ver": 0})
+    payload = jwt.decode(token, settings.JWT_ACCESS_SECRET, algorithms=["HS256"], audience=TOKEN_AUDIENCE)
     duration = settings.duration_seconds(settings.JWT_ACCESS_EXPIRES_IN)
     assert abs(payload["exp"] - before - duration) < 2
     assert TokenResponse(access_token=token).expires_in == duration

@@ -1,0 +1,8 @@
+export interface PageResult<T> { items: T[]; total: number; page: number; page_size: number }
+export interface Account { id: string; email: string; role: "user" | "admin"; is_active: boolean; email_verified: boolean; storage_quota_mb: number; storage_used_bytes: number }
+export interface AccountDetail extends Account { display_name: string; created_at: string; onboarding_complete: boolean }
+export interface AdminOverview { users: number; documents: number; storage_bytes: number; active_jobs: number; new_users_24h: number; jobs_24h: number; failed_24h: number; checked_at: string; scope: "workspace"; tools: { feature: string; total: number; done: number; failed: number }[] }
+export interface AdminProcess { id: string; feature: string; status: string; progress: number; created_at: string; duration_seconds: number | null; error_code: "PROCESS_FAILED" | null }
+export interface AdminAudit { id: string; actor_id: string; target_id: string; action: string; is_active: boolean | null; storage_quota_mb: number | null; created_at: string }
+export interface ServiceHealth { backend: boolean; database: boolean; checked_at: string; storage: { available: boolean; writable: boolean; free_bytes: number | null; total_bytes: number | null; low_space: boolean | null }; engines: { libreoffice: boolean; pdf_renderer: boolean; ghostscript: boolean; pngquant: boolean } }
+export interface ServiceSettings { limits: { pdf_mb: number; office_mb: number; pptx_mb: number; image_mb: number; batch_mb: number; max_files: number; max_pages: number; image_edge_px: number; timeout_seconds: number; process_rate: string }; privacy: { admin_document_access: false; guest_document_history: false; raw_job_errors_exposed: false }; editable: false }

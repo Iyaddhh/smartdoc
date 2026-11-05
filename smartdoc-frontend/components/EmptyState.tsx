@@ -14,7 +14,7 @@ interface EmptyStateProps {
 }
 
 export default function EmptyState({
-  icon = <FolderOpen size={36} strokeWidth={1.5} style={{ color: "var(--color-ash-gray)" }} />,
+  icon = <FolderOpen size={36} strokeWidth={1.5} style={{ color: "var(--color-graphite)" }} />,
   title,
   description,
   actionText,
@@ -26,7 +26,7 @@ export default function EmptyState({
       className="card animate-fade-in"
       style={{
         textAlign: "center",
-        padding: "48px 24px",
+        padding: "var(--card-padding)",
         display: "flex",
         flexDirection: "column",
         alignItems: "center",
@@ -36,23 +36,23 @@ export default function EmptyState({
       <div
         className="stat-icon"
         style={{
-          width: "56px",
-          height: "56px",
+          width: "40px",
+          height: "40px",
           borderRadius: "var(--radius-cards)",
           marginBottom: "16px",
-          background: "var(--color-stone-canvas)",
+          background: "var(--color-canvas-white)",
         }}
       >
         {icon}
       </div>
 
-      <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)", marginBottom: "4px" }}>
+      <h3 style={{ fontSize: "16px", fontWeight: 500, color: "var(--color-midnight-ink)", marginBottom: "4px" }}>
         {title}
       </h3>
 
       <p
         style={{
-          color: "var(--color-warm-gray)",
+          color: "var(--color-graphite)",
           fontSize: "13.5px",
           maxWidth: "420px",
           lineHeight: 1.6,
@@ -64,9 +64,7 @@ export default function EmptyState({
 
       {actionText && (
         actionHref ? (
-          <Link href={actionHref}>
-            <button className="btn btn-primary btn-sm">{actionText}</button>
-          </Link>
+          <Link href={actionHref} className="btn btn-primary btn-sm">{actionText}</Link>
         ) : (
           <button className="btn btn-primary btn-sm" onClick={onActionClick}>
             {actionText}

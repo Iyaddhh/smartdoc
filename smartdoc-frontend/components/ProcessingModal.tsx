@@ -90,7 +90,7 @@ export default function ProcessingModal({
         bottom: 0,
         width: "100vw",
         height: "100vh",
-        backgroundColor: "rgba(12, 10, 9, 0.45)",
+        backgroundColor: "var(--color-backdrop)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
         display: "flex",
@@ -107,10 +107,10 @@ export default function ProcessingModal({
         style={{
           width: "100%",
           maxWidth: "460px",
-          background: "var(--color-pure-white)",
-          borderRadius: "16px",
-          padding: "28px 24px",
-          boxShadow: "0 24px 48px -12px rgba(12, 10, 9, 0.25), 0 0 0 1px rgba(0,0,0,0.06)",
+          background: "var(--color-canvas-white)",
+          borderRadius: "var(--radius-cards)",
+          padding: "var(--card-padding)",
+          boxShadow: "none",
           display: "flex",
           flexDirection: "column",
           gap: "20px",
@@ -123,9 +123,9 @@ export default function ProcessingModal({
             style={{
               width: "44px",
               height: "44px",
-              borderRadius: "12px",
-              background: status === "failed" ? "var(--clr-error-bg)" : "var(--color-sky-wash)",
-              color: status === "failed" ? "var(--clr-error)" : "var(--color-cyan-edge)",
+              borderRadius: "var(--radius-cardssmall)",
+              background: status === "failed" ? "var(--clr-error-bg)" : "var(--color-active-blue)",
+              color: status === "failed" ? "var(--clr-error)" : "var(--color-electric-blue)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -143,8 +143,8 @@ export default function ProcessingModal({
             <h3
               style={{
                 fontSize: "16px",
-                fontWeight: 600,
-                color: "var(--color-ink-black)",
+                fontWeight: 500,
+                color: "var(--color-midnight-ink)",
                 marginBottom: "4px",
               }}
             >
@@ -153,7 +153,7 @@ export default function ProcessingModal({
             <p
               style={{
                 fontSize: "12.5px",
-                color: "var(--color-warm-gray)",
+                color: "var(--color-graphite)",
                 lineHeight: 1.4,
               }}
             >
@@ -166,9 +166,9 @@ export default function ProcessingModal({
         {(filename || targetFormat) && (
           <div
             style={{
-              background: "var(--color-stone-canvas)",
-              border: "1px solid var(--color-stone-border)",
-              borderRadius: "10px",
+              background: "var(--color-canvas-white)",
+              border: "1px solid var(--color-ash)",
+              borderRadius: "var(--radius-cardssmall)",
               padding: "12px 14px",
               display: "flex",
               alignItems: "center",
@@ -177,12 +177,12 @@ export default function ProcessingModal({
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-              <FileOutput size={16} style={{ color: "var(--color-warm-gray)", flexShrink: 0 }} />
+              <FileOutput size={16} style={{ color: "var(--color-graphite)", flexShrink: 0 }} />
               <span
                 style={{
                   fontSize: "13px",
                   fontWeight: 500,
-                  color: "var(--color-ink-black)",
+                  color: "var(--color-midnight-ink)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
@@ -193,7 +193,7 @@ export default function ProcessingModal({
             </div>
 
             {targetFormat && (
-              <span className="badge badge-neutral" style={{ flexShrink: 0, fontSize: "11px", fontWeight: 600 }}>
+              <span className="badge badge-neutral" style={{ flexShrink: 0, fontSize: "11px", fontWeight: 500 }}>
                 Ke {targetFormat.toUpperCase()}
               </span>
             )}
@@ -208,7 +208,7 @@ export default function ProcessingModal({
               <span
                 style={{
                   fontSize: "12.5px",
-                  color: "var(--color-warm-gray)",
+                  color: "var(--color-graphite)",
                   display: "inline-flex",
                   alignItems: "center",
                   gap: "5px",
@@ -221,8 +221,8 @@ export default function ProcessingModal({
               <span
                 style={{
                   fontSize: "13px",
-                  fontWeight: 700,
-                  color: "var(--color-cyan-edge)",
+                  fontWeight: 500,
+                  color: "var(--color-electric-blue)",
                 }}
               >
                 {Math.round(progress)}%
@@ -235,7 +235,7 @@ export default function ProcessingModal({
                 className="progress-bar-fill"
                 style={{
                   width: `${progress}%`,
-                  background: "var(--color-cyan-signal)",
+                  background: "var(--color-electric-blue)",
                   transition: "width 0.4s ease",
                   borderRadius: "999px",
                 }}
@@ -244,8 +244,8 @@ export default function ProcessingModal({
 
             {/* Dynamic Step Detail */}
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px" }}>
-              <Sparkles size={13} style={{ color: "var(--color-cyan-edge)", flexShrink: 0 }} />
-              <span style={{ fontSize: "12.5px", color: "var(--color-warm-gray)" }}>
+              <Sparkles size={13} style={{ color: "var(--color-electric-blue)", flexShrink: 0 }} />
+              <span style={{ fontSize: "12.5px", color: "var(--color-graphite)" }}>
                 {detailText}
               </span>
             </div>

@@ -32,7 +32,7 @@ const GUIDES: Record<FeatureType, FeatureGuideContent> = {
   converter: {
     title: "Document Converter",
     badge: "Konversi Antar Format",
-    tagline: "Ubah format dokumen secara instan tanpa merusak tata letak, font, dan elemen visual.",
+    tagline: "Konversi dokumen ke format yang Anda perlukan. Tata letak hasil dapat berbeda, terutama pada PDF ke Word.",
     icon: FileText,
     steps: [
       {
@@ -79,13 +79,15 @@ const GUIDES: Record<FeatureType, FeatureGuideContent> = {
       },
     ],
     limits: [
-      { label: "Batas Ukuran Dokumen / PDF", value: "Maksimal 35 MB (Maks 50 Halaman)" },
+      { label: "PowerPoint (.pptx)", value: "Maksimal 200 MB" },
+      { label: "Word, Excel / PDF", value: "Maksimal 35 MB (PDF maks 50 halaman)" },
       { label: "Batas Ukuran Gambar", value: "Maksimal 12 MB & Maks 10000px" },
       { label: "Smart Protection", value: "Jika file asli sudah optimal, sistem aman mengembalikan file asli tanpa merusak kualitas." },
     ],
     tips: [
       "Kompresi gambar PNG menggunakan kuantisasi palet warna untuk memangkas ukuran hingga 70% tanpa blur.",
       "Kompresi PDF menyeimbangkan kompresi font vektor dan resolusi gambar internal menjadi 150 DPI standar web/arsip.",
+      "PPTX menggunakan kompresi Seimbang: gambar dioptimalkan dengan mempertahankan resolusi dan transparansi. Warna atau detail gambar dapat sedikit berubah. Semua slide, teks, catatan, dan objek tetap dipertahankan.",
     ],
   },
   splitter: {
@@ -216,7 +218,7 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
       style={{
         position: "fixed",
         inset: 0,
-        backgroundColor: "rgba(12, 10, 9, 0.55)",
+        backgroundColor: "rgba(10, 10, 10, 0.55)",
         backdropFilter: "blur(6px)",
         WebkitBackdropFilter: "blur(6px)",
         display: "flex",
@@ -231,15 +233,15 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
         className="guide-modal-card card"
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--color-pure-white)",
-          border: "1px solid var(--color-stone-border)",
-          borderRadius: "16px",
+          background: "var(--color-canvas-white)",
+          border: "1px solid var(--color-ash)",
+          borderRadius: "var(--radius-cards)",
           width: "100%",
           maxWidth: "640px",
           maxHeight: "88vh",
           display: "flex",
           flexDirection: "column",
-          boxShadow: "0 20px 40px -10px rgba(0,0,0,0.2)",
+          boxShadow: "none",
           overflow: "hidden",
           animation: "scaleUp 0.22s ease-out",
         }}
@@ -248,11 +250,11 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
         <div
           style={{
             padding: "20px 24px",
-            borderBottom: "1px solid var(--color-stone-border)",
+            borderBottom: "1px solid var(--color-ash)",
             display: "flex",
             alignItems: "flex-start",
             justifyContent: "space-between",
-            background: "var(--color-stone-canvas)",
+            background: "var(--color-canvas-white)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -260,9 +262,9 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
               style={{
                 width: "42px",
                 height: "42px",
-                borderRadius: "10px",
-                background: "var(--color-sky-wash)",
-                color: "var(--color-cyan-edge)",
+                borderRadius: "var(--radius-cardssmall)",
+                background: "var(--color-active-blue)",
+                color: "var(--color-electric-blue)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -273,13 +275,13 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
             </div>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <h3 style={{ fontSize: "17px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                <h3 style={{ fontSize: "17px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                   {content.title}
                 </h3>
                 <span
                   style={{
                     fontSize: "11px",
-                    fontWeight: 600,
+                    fontWeight: 500,
                     padding: "2px 8px",
                     borderRadius: "9999px",
                     background: "var(--clr-info-bg)",
@@ -290,7 +292,7 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
                   {content.badge}
                 </span>
               </div>
-              <p style={{ fontSize: "12.5px", color: "var(--color-warm-gray)", marginTop: "3px", margin: 0 }}>
+              <p style={{ fontSize: "12.5px", color: "var(--color-graphite)", marginTop: "3px", margin: 0 }}>
                 {content.tagline}
               </p>
             </div>
@@ -302,21 +304,21 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
             style={{
               background: "transparent",
               border: "none",
-              color: "var(--color-ash-gray)",
+              color: "var(--color-graphite)",
               cursor: "pointer",
               padding: "6px",
-              borderRadius: "8px",
+              borderRadius: "var(--radius-cardssmall)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               transition: "all 0.15s ease",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.color = "var(--color-ink-black)";
-              e.currentTarget.style.background = "var(--color-stone-border)";
+              e.currentTarget.style.color = "var(--color-midnight-ink)";
+              e.currentTarget.style.background = "var(--color-ash)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.color = "var(--color-ash-gray)";
+              e.currentTarget.style.color = "var(--color-graphite)";
               e.currentTarget.style.background = "transparent";
             }}
           >
@@ -337,8 +339,8 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
           {/* Section 1: Cara Pakai (Step by Step) */}
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-              <BookOpen size={16} color="var(--color-cyan-edge)" />
-              <h4 style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+              <BookOpen size={16} color="var(--color-electric-blue)" />
+              <h4 style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                 Cara Penggunaan
               </h4>
             </div>
@@ -351,10 +353,10 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
                     display: "flex",
                     alignItems: "flex-start",
                     gap: "12px",
-                    background: "var(--color-stone-canvas)",
+                    background: "var(--color-canvas-white)",
                     padding: "12px 14px",
-                    borderRadius: "10px",
-                    border: "1px solid var(--color-stone-border)",
+                    borderRadius: "var(--radius-cardssmall)",
+                    border: "1px solid var(--color-ash)",
                   }}
                 >
                   <div
@@ -362,10 +364,10 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
                       width: "22px",
                       height: "22px",
                       borderRadius: "50%",
-                      background: "var(--color-ink-black)",
-                      color: "#fff",
+                      background: "var(--color-midnight-ink)",
+                      color: "var(--color-canvas-white)",
                       fontSize: "11px",
-                      fontWeight: 700,
+                      fontWeight: 500,
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -376,10 +378,10 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
                     {idx + 1}
                   </div>
                   <div>
-                    <h5 style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                    <h5 style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                       {step.title}
                     </h5>
-                    <p style={{ fontSize: "12px", color: "var(--color-warm-gray)", marginTop: "2px", margin: 0, lineHeight: 1.45 }}>
+                    <p style={{ fontSize: "12px", color: "var(--color-graphite)", marginTop: "2px", margin: 0, lineHeight: 1.45 }}>
                       {step.desc}
                     </p>
                   </div>
@@ -392,7 +394,7 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
               <AlertTriangle size={16} color="#d97706" />
-              <h4 style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+              <h4 style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                 Batasan & Kapasitas Berkas
               </h4>
             </div>
@@ -409,16 +411,16 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
                   key={idx}
                   style={{
                     padding: "12px 14px",
-                    borderRadius: "10px",
-                    border: "1px solid var(--color-stone-border)",
-                    background: "#fff",
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
+                    borderRadius: "var(--radius-cardssmall)",
+                    border: "1px solid var(--color-ash)",
+                    background: "var(--color-canvas-white)",
+                    boxShadow: "none",
                   }}
                 >
-                  <span style={{ fontSize: "11.5px", color: "var(--color-ash-gray)", fontWeight: 500, display: "block" }}>
+                  <span style={{ fontSize: "11.5px", color: "var(--color-graphite)", fontWeight: 500, display: "block" }}>
                     {limit.label}
                   </span>
-                  <span style={{ fontSize: "13px", color: "var(--color-ink-black)", fontWeight: 600, marginTop: "2px", display: "block" }}>
+                  <span style={{ fontSize: "13px", color: "var(--color-midnight-ink)", fontWeight: 500, marginTop: "2px", display: "block" }}>
                     {limit.value}
                   </span>
                 </div>
@@ -432,7 +434,7 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
               style={{
                 background: "var(--clr-info-bg)",
                 border: "1px solid var(--clr-info-border)",
-                borderRadius: "10px",
+                borderRadius: "var(--radius-cardssmall)",
                 padding: "14px 16px",
                 display: "flex",
                 flexDirection: "column",
@@ -441,13 +443,13 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Lightbulb size={16} color="var(--clr-info)" />
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                <span style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                   Tips & Rekomendasi
                 </span>
               </div>
               <ul style={{ margin: 0, paddingLeft: "20px", display: "flex", flexDirection: "column", gap: "4px" }}>
                 {content.tips.map((tip, idx) => (
-                  <li key={idx} style={{ fontSize: "12px", color: "var(--color-warm-gray)", lineHeight: 1.5 }}>
+                  <li key={idx} style={{ fontSize: "12px", color: "var(--color-graphite)", lineHeight: 1.5 }}>
                     {tip}
                   </li>
                 ))}
@@ -460,8 +462,8 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
         <div
           style={{
             padding: "14px 24px",
-            borderTop: "1px solid var(--color-stone-border)",
-            background: "var(--color-stone-canvas)",
+            borderTop: "1px solid var(--color-ash)",
+            background: "var(--color-canvas-white)",
             display: "flex",
             alignItems: "center",
             justifyContent: "flex-end",
@@ -474,7 +476,7 @@ export default function FeatureGuideModal({ isOpen, onClose, feature }: FeatureG
               padding: "8px 20px",
               fontSize: "13px",
               fontWeight: 500,
-              borderRadius: "8px",
+              borderRadius: "var(--radius-cardssmall)",
             }}
           >
             Mengerti & Tutup
@@ -500,22 +502,22 @@ export function GuideButton({ onClick, label = "Panduan & Batasan" }: { onClick:
         padding: "6px 14px",
         fontSize: "12.5px",
         fontWeight: 500,
-        color: "var(--color-warm-gray)",
-        background: "var(--color-stone-canvas)",
-        border: "1px solid var(--color-stone-border)",
-        borderRadius: "9999px",
+        color: "var(--color-graphite)",
+        background: "var(--color-canvas-white)",
+        border: "1px solid var(--color-ash)",
+        borderRadius: "var(--radius-buttons)",
         cursor: "pointer",
         transition: "all 0.15s ease",
       }}
       onMouseEnter={(e) => {
-        e.currentTarget.style.color = "var(--color-cyan-edge)";
-        e.currentTarget.style.borderColor = "var(--color-cyan-signal)";
-        e.currentTarget.style.background = "var(--color-sky-wash)";
+        e.currentTarget.style.color = "var(--color-electric-blue)";
+        e.currentTarget.style.borderColor = "var(--color-electric-blue)";
+        e.currentTarget.style.background = "var(--color-active-blue)";
       }}
       onMouseLeave={(e) => {
-        e.currentTarget.style.color = "var(--color-warm-gray)";
-        e.currentTarget.style.borderColor = "var(--color-stone-border)";
-        e.currentTarget.style.background = "var(--color-stone-canvas)";
+        e.currentTarget.style.color = "var(--color-graphite)";
+        e.currentTarget.style.borderColor = "var(--color-ash)";
+        e.currentTarget.style.background = "var(--color-canvas-white)";
       }}
     >
       <HelpCircle size={15} />

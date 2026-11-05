@@ -90,6 +90,111 @@ async def test_public_compressor(public_client):
 
 
 @pytest.mark.asyncio
+async def test_public_preview_has_pages_and_never_keeps_files(public_client):
+    client, root = public_client
+    response = await client.post("/api/guest/preview", files={"file": ("source.pdf", pdf_bytes(), "application/pdf")})
+    assert response.status_code == 200, response.text[:300]
+    assert response.headers["cache-control"] == "no-store"
+    data = response.json()["data"]
+    assert data["total_pages"] == 2
+    assert len(data["thumbnails"]) == 2
+    assert data["thumbnail"].startswith("data:image/jpeg;base64,")
+    assert list((root / "temp" / "guest").iterdir()) == []
+    assert not (root / "documents").exists()
+
+
+@pytest.mark.asyncio
+async def test_public_preview_render_failure_is_cleaned(public_client, monkeypatch):
+    import app.api.guest as guest
+    client, root = public_client
+
+    def broken_render(*args):
+        raise ValueError("Cannot render")
+
+    monkeypatch.setattr(guest, "render_pdf_page", broken_render)
+    monkeypatch.setattr(guest, "run_engine", guest.run_sync)
+    response = await client.post("/api/guest/preview", files={"file": ("source.pdf", pdf_bytes(), "application/pdf")})
+    assert response.status_code == 422
+    assert list((root / "temp" / "guest").iterdir()) == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("position,after,expected", [
+    ("start", 1, [500, 300, 300]), ("end", 1, [300, 300, 500]),
+    ("custom", 1, [300, 500, 300]),
+])
+async def test_public_insert_preserves_requested_page_order(public_client, position, after, expected):
+    client, root = public_client
+    writer = PdfWriter()
+    writer.add_blank_page(width=500, height=400)
+    insert = io.BytesIO()
+    writer.write(insert)
+    response = await client.post("/api/guest/merger", data={
+        "merge_mode": "insert", "insert_position": position, "after_page": after,
+    }, files=[("files", ("main.pdf", pdf_bytes(), "application/pdf")),
+              ("files", ("insert.pdf", insert.getvalue(), "application/pdf"))])
+    assert response.status_code == 200, response.text[:300]
+    assert [int(page.mediabox.width) for page in PdfReader(io.BytesIO(response.content)).pages] == expected
+    assert list((root / "temp" / "guest").iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_public_insert_rejects_out_of_range_position_and_extra_files(public_client):
+    client, root = public_client
+    files = [("files", ("source.pdf", pdf_bytes(), "application/pdf"))] * 2
+    response = await client.post("/api/guest/merger", data={
+        "merge_mode": "insert", "insert_position": "custom", "after_page": 3,
+    }, files=files)
+    assert response.status_code == 422
+    assert list((root / "temp" / "guest").iterdir()) == []
+    response = await client.post("/api/guest/merger", data={"merge_mode": "insert"}, files=files + files)
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_public_watermark_uses_customer_controls(public_client, monkeypatch):
+    import app.api.guest as guest
+    client, root = public_client
+    engine = guest.apply_watermark_and_security
+    calls = []
+
+    def capture(*args):
+        calls.append(args)
+        return engine(*args)
+
+    monkeypatch.setattr(guest, "apply_watermark_and_security", capture)
+    monkeypatch.setattr(guest, "run_engine", guest.run_sync)
+    response = await client.post("/api/guest/watermark", data={
+        "watermark_text": "RAHASIA", "opacity": "0.6", "angle": "-45", "color_hex": "#ff0000",
+    }, files={"files": ("source.pdf", pdf_bytes(), "application/pdf")})
+    assert response.status_code == 200
+    assert calls[0][4:8] == (0.6, -45, 44, "#ff0000")
+    assert list((root / "temp" / "guest").iterdir()) == []
+
+
+@pytest.mark.asyncio
+async def test_public_split_word_converts_only_selected_pages(public_client, monkeypatch):
+    import app.api.guest as guest
+    client, root = public_client
+    counts = []
+
+    def convert(source, target):
+        counts.append(len(PdfReader(source).pages))
+        Path(target).write_bytes(b"word-result")
+        return True
+
+    monkeypatch.setattr(guest, "pdf_to_word", convert)
+    monkeypatch.setattr(guest, "run_engine", guest.run_sync)
+    response = await client.post("/api/guest/splitter", data={"page_range": "2", "output_format": "docx"},
+                                 files={"files": ("source.pdf", pdf_bytes(), "application/pdf")})
+    assert response.status_code == 200
+    assert counts == [1]
+    assert "hasil.docx" in response.headers["content-disposition"]
+    assert response.content == b"word-result"
+    assert list((root / "temp" / "guest").iterdir()) == []
+
+
+@pytest.mark.asyncio
 async def test_failed_upload_and_invalid_range_are_cleaned(public_client):
     client, root = public_client
     response = await client.post("/api/guest/merger", files=[
@@ -128,3 +233,17 @@ async def test_disconnect_still_cleans_download_directory(tmp_path):
     with pytest.raises(RuntimeError):
         await response({"type": "http", "method": "GET", "headers": []}, receive, disconnected_send)
     assert not tmp_path.exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("password", [" padded password ", "   "])
+async def test_pdf_password_is_preserved_exactly(public_client, password):
+    client, root = public_client
+    response = await client.post("/api/guest/watermark", data={"password": password},
+                                files={"files": ("source.pdf", pdf_bytes(), "application/pdf")})
+    assert response.status_code == 200
+    reader = PdfReader(io.BytesIO(response.content))
+    assert reader.is_encrypted
+    assert reader.decrypt(password)
+    assert not PdfReader(io.BytesIO(response.content)).decrypt(password.strip())
+    assert list((root / "temp" / "guest").iterdir()) == []

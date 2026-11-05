@@ -2,6 +2,7 @@ import os
 import shutil
 import tempfile
 import asyncio
+from app.core.workers import run_engine
 from pathlib import Path
 from app.core.logger import logger
 from app.core.concurrency import libreoffice_semaphore
@@ -38,21 +39,7 @@ async def async_convert_office_to_pdf(input_path: str, output_path: str, timeout
         # Fallback docx2pdf jika format input adalah .docx di Windows
         if input_path.lower().endswith(".docx"):
             try:
-                def _run_docx2pdf():
-                    import sys
-                    venv_site = os.path.join(sys.prefix, "Lib", "site-packages")
-                    for p in [os.path.join(venv_site, "win32"), os.path.join(venv_site, "win32", "lib"), os.path.join(venv_site, "Pythonwin")]:
-                        if os.path.exists(p) and p not in sys.path:
-                            sys.path.insert(0, p)
-                    import pythoncom
-                    import docx2pdf
-                    pythoncom.CoInitialize()
-                    try:
-                        docx2pdf.convert(os.path.abspath(input_path), os.path.abspath(output_path))
-                    finally:
-                        pythoncom.CoUninitialize()
-
-                await asyncio.wait_for(asyncio.to_thread(_run_docx2pdf), timeout=timeout_seconds)
+                await run_engine(_run_docx2pdf, input_path, output_path, timeout=timeout_seconds)
                 if os.path.exists(output_path):
                     await asyncio.to_thread(validate_pdf_pages, output_path)
                     logger.info(f"DOCX -> PDF via docx2pdf: {input_path} -> {output_path}")
@@ -86,6 +73,11 @@ async def async_convert_office_to_pdf(input_path: str, output_path: str, timeout
 
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+            except asyncio.CancelledError:
+                if proc.returncode is None:
+                    proc.kill()
+                await proc.wait()
+                raise
             except asyncio.TimeoutError:
                 try:
                     proc.kill()
@@ -132,3 +124,18 @@ def convert_office_to_pdf(input_path: str, output_path: str) -> bool:
             return future.result()
     except Exception:
         return False
+
+
+def _run_docx2pdf(input_path, output_path):
+    import sys
+    venv_site = os.path.join(sys.prefix, "Lib", "site-packages")
+    for p in [os.path.join(venv_site, "win32"), os.path.join(venv_site, "win32", "lib"), os.path.join(venv_site, "Pythonwin")]:
+        if os.path.exists(p) and p not in sys.path:
+            sys.path.insert(0, p)
+    import pythoncom
+    import docx2pdf
+    pythoncom.CoInitialize()
+    try:
+        docx2pdf.convert(os.path.abspath(input_path), os.path.abspath(output_path))
+    finally:
+        pythoncom.CoUninitialize()

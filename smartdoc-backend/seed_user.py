@@ -14,11 +14,13 @@ from sqlalchemy import select
 from app.db.base import AsyncSessionLocal
 from app.models.user import User
 from app.core.security import hash_password
+from app.services.auth_sessions import revoke_account_sessions
 
 
 async def seed_user(username: str, email: str, password: str, role: str = "user", update_existing: bool = False):
     async with AsyncSessionLocal() as session:
-        stmt = select(User).where((User.username == username) | (User.email == email))
+        stmt = (select(User).where((User.username == username) | (User.email == email))
+                .with_for_update().execution_options(populate_existing=True))
         result = await session.execute(stmt)
         existing_user = result.scalar_one_or_none()
 
@@ -26,7 +28,7 @@ async def seed_user(username: str, email: str, password: str, role: str = "user"
             if update_existing:
                 existing_user.role = role
                 existing_user.hashed_password = hash_password(password)
-                existing_user.token_version += 1
+                await revoke_account_sessions(session, existing_user)
                 existing_user.is_active = True
                 await session.commit()
                 print(f"[UPDATED] User '{username}' ({email}, role: {role}) password & role diperbarui.")
@@ -40,6 +42,7 @@ async def seed_user(username: str, email: str, password: str, role: str = "user"
             email=email,
             hashed_password=hash_password(password),
             role=role,
+            email_verified=True,
             is_active=True,
             created_at=datetime.now(timezone.utc).replace(tzinfo=None),
         )

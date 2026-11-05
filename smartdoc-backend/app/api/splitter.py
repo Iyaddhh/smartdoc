@@ -1,3 +1,5 @@
+from app.services.document_audit import record_document_activity
+from app.api.tool_sources import tool_inputs, single_tool_input
 from app.core.limiter import limiter
 from typing import Literal
 import os
@@ -7,7 +9,7 @@ import base64
 from io import BytesIO
 from pathlib import Path
 from typing import Optional, List
-from fastapi import Request, APIRouter, Depends, UploadFile, File, Form, BackgroundTasks
+from fastapi import Request, APIRouter, Depends, UploadFile, File, Form, BackgroundTasks, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.base import get_db, AsyncSessionLocal
@@ -16,10 +18,9 @@ from app.models.job import Job
 from app.models.user import User
 from app.core.config import settings
 from app.core.concurrency import job_semaphore, preview_capacity
-from app.core.datetime_utils import utc_now
 from app.core.response import ok_response, fail_response
 from app.core.logger import logger
-from app.core.validators import validate_and_read_upload, validate_file_magic_bytes
+from app.core.validators import validate_and_read_upload, validate_pdf_pages
 from app.services.converter import async_convert_office_to_pdf, pdf_to_word
 from app.services.splitter import (
     parse_page_ranges,
@@ -28,6 +29,9 @@ from app.services.splitter import (
     split_pdf_by_chunks,
     split_all_single_pages,
 )
+from app.services.document_jobs import start_job, complete_job, fail_job
+from app.services.pdf_rendering import render_pdf_page
+from app.core.workers import run_engine
 from app.core.security import get_current_user
 
 router = APIRouter(
@@ -42,10 +46,9 @@ ALLOWED_SPLIT_EXTENSIONS = {".pdf", ".docx"}
 def _generate_thumbnails(pdf_path: str, max_pages: int = 50) -> List[str]:
     """Generates base64 data URL thumbnails for document pages."""
     try:
-        from pdf2image import convert_from_path
-        pages = convert_from_path(pdf_path, first_page=1, last_page=max_pages, dpi=60)
         thumbs = []
-        for page in pages:
+        for index in range(min(validate_pdf_pages(pdf_path), max_pages)):
+            page = render_pdf_page(pdf_path, index, 60)
             try:
                 buf = BytesIO()
                 page.save(buf, format="JPEG", quality=65)
@@ -78,11 +81,7 @@ async def _run_split_job(
         async with AsyncSessionLocal() as db:
             temp_pdf_to_clean = None
             try:
-                job = await db.get(Job, uuid.UUID(job_id))
-                job.status = "processing"
-                job.progress = 20
-                job.started_at = utc_now()
-                await db.commit()
+                job = await start_job(db, job_id, document_id, 20)
 
                 async def _do_split():
                     nonlocal temp_pdf_to_clean
@@ -96,7 +95,7 @@ async def _run_split_job(
                             raise RuntimeError("Gagal mengonversi berkas Word ke PDF untuk pemisahan halaman.")
                         working_pdf = temp_pdf_to_clean
 
-                    total_pages = await asyncio.to_thread(get_pdf_page_count, working_pdf)
+                    total_pages = await run_engine(get_pdf_page_count, working_pdf)
                     if total_pages == 0:
                         raise ValueError("Berkas PDF tidak memiliki halaman yang dapat dibaca.")
 
@@ -112,14 +111,14 @@ async def _run_split_job(
                         page_indices = parse_page_ranges(range_expression or "1", total_pages)
                         if not page_indices:
                             raise ValueError("Rentang halaman yang dimasukkan tidak valid.")
-                        success = await asyncio.to_thread(
+                        success = await run_engine(
                             extract_pages_to_pdf, working_pdf, page_indices, temp_output_pdf
                         )
 
                         if success and output_format == "docx":
                             job.progress = 75
                             await db.commit()
-                            conv_docx_ok = await asyncio.to_thread(pdf_to_word, temp_output_pdf, output_path)
+                            conv_docx_ok = await run_engine(pdf_to_word, temp_output_pdf, output_path)
                             if not conv_docx_ok:
                                 raise RuntimeError("Gagal mengonversi halaman hasil ekstrak kembali ke format Word (.docx).")
                             if os.path.exists(temp_output_pdf):
@@ -130,12 +129,12 @@ async def _run_split_job(
 
                     elif split_mode == "fixed_interval":
                         c_size = max(1, chunk_size)
-                        success = await asyncio.to_thread(
+                        success = await run_engine(
                             split_pdf_by_chunks, working_pdf, c_size, output_path, base_name
                         )
 
                     elif split_mode == "all_single":
-                        success = await asyncio.to_thread(
+                        success = await run_engine(
                             split_all_single_pages, working_pdf, output_path, base_name
                         )
                     else:
@@ -146,36 +145,14 @@ async def _run_split_job(
 
                 await asyncio.wait_for(_do_split(), timeout=settings.JOB_TIMEOUT_SECONDS)
 
-                doc = await db.get(Document, uuid.UUID(document_id))
-                output_size = os.path.getsize(output_path)
-                doc.output_size = output_size
-                doc.status = "done"
-
-                job = await db.get(Job, uuid.UUID(job_id))
-                job.status = "done"
-                job.progress = 100
-                job.finished_at = utc_now()
-                await db.commit()
+                await complete_job(db, job_id, document_id, output_path)
 
                 logger.info(f"[job:{job_id}] Pemisahan dokumen berhasil: {output_path}")
 
             except Exception as e:
                 logger.error(f"[job:{job_id}] Pemisahan dokumen gagal: {e}")
-                job = await db.get(Job, uuid.UUID(job_id))
-                if job:
-                    job.status = "failed"
-                    job.error = str(e)
-                    job.finished_at = utc_now()
-                doc = await db.get(Document, uuid.UUID(document_id))
-                if doc:
-                    doc.status = "failed"
-                    # Cleanup file original jika job gagal
-                    if doc.original_file and os.path.exists(doc.original_file):
-                        try:
-                            os.remove(doc.original_file)
-                        except Exception:
-                            pass
-                await db.commit()
+                await fail_job(db, job_id, document_id, e, [input_path, output_path])
+
             finally:
                 if temp_pdf_to_clean and os.path.exists(temp_pdf_to_clean):
                     try:
@@ -186,10 +163,11 @@ async def _run_split_job(
 
 @router.post("/info", dependencies=[Depends(preview_capacity)])
 @limiter.shared_limit(settings.PREVIEW_RATE_LIMIT, scope="document-preview", override_defaults=False)
-async def get_document_info(request: Request, file: UploadFile = File(...)):
+async def get_document_info(request: Request, inputs: list[UploadFile] = Depends(tool_inputs)):
     """
     Mengambil informasi berkas (total halaman dan preview thumbnail) sebelum eksekusi split.
     """
+    file = single_tool_input(inputs)
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_SPLIT_EXTENSIONS:
         return fail_response(
@@ -212,11 +190,13 @@ async def get_document_info(request: Request, file: UploadFile = File(...)):
         temp_pdf_to_clean = None
         if ext == ".docx":
             temp_pdf_to_clean = f"{temp_path}_converted.pdf"
-            await async_convert_office_to_pdf(temp_path, temp_pdf_to_clean)
+            converted = await async_convert_office_to_pdf(temp_path, temp_pdf_to_clean)
+            if not converted or not os.path.isfile(temp_pdf_to_clean):
+                raise HTTPException(422, "Dokumen Office tidak dapat dibaca untuk pratinjau.")
             working_pdf = temp_pdf_to_clean
 
-        total_pages = await asyncio.to_thread(get_pdf_page_count, working_pdf)
-        thumbnails = await asyncio.to_thread(_generate_thumbnails, working_pdf, 50)
+        total_pages = await run_engine(validate_pdf_pages, working_pdf)
+        thumbnails = await run_engine(_generate_thumbnails, working_pdf, settings.MAX_PDF_PAGES)
 
         return ok_response(
             data={
@@ -242,7 +222,8 @@ async def get_document_info(request: Request, file: UploadFile = File(...)):
 async def split_document(
     background_tasks: BackgroundTasks,
     request: Request,
-    file: UploadFile = File(...),
+    save_to_workspace: bool = Form(False),
+    inputs: list[UploadFile] = Depends(tool_inputs),
     split_mode: Literal["extract_range", "fixed_interval", "all_single"] = Form(..., description="'extract_range', 'fixed_interval', 'all_single'"),
     range_expression: Optional[str] = Form(None, description="cth: '1-3, 5, 8-10'"),
     chunk_size: int = Form(1, ge=1, description="Interval halaman untuk mode fixed_interval"),
@@ -250,6 +231,7 @@ async def split_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    file = single_tool_input(inputs)
     ext = Path(file.filename).suffix.lower()
     if ext not in ALLOWED_SPLIT_EXTENSIONS:
         return fail_response(
@@ -260,7 +242,7 @@ async def split_document(
     content = await validate_and_read_upload(file, ext)
 
     original_id = str(uuid.uuid4())
-    original_dir = os.path.join(settings.STORAGE_PATH, "documents", "originals")
+    original_dir = os.path.join(settings.STORAGE_PATH, "work")
     os.makedirs(original_dir, exist_ok=True)
     original_path = os.path.join(original_dir, f"{original_id}{ext}")
 
@@ -268,7 +250,7 @@ async def split_document(
         f.write(content)
 
     user_stem = Path(file.filename).stem
-    output_dir = os.path.join(settings.STORAGE_PATH, "documents", "outputs")
+    output_dir = os.path.join(settings.STORAGE_PATH, "results")
     os.makedirs(output_dir, exist_ok=True)
 
     if split_mode == "extract_range":
@@ -286,6 +268,7 @@ async def split_document(
         id=uuid.uuid4(),
         user_id=current_user.id,
         feature="splitter",
+        save_requested=save_to_workspace, is_saved=False, source_paths=[original_path],
         custom_name=custom_output_name,
         original_file=original_path,
         output_file=output_path,
@@ -302,6 +285,7 @@ async def split_document(
         progress=0,
     )
     db.add(job)
+    record_document_activity(db, doc, "process_queued")
     await db.commit()
 
     background_tasks.add_task(

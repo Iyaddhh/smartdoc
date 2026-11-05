@@ -1,8 +1,9 @@
 import os
 import shutil
 import asyncio
+from app.core.workers import run_engine
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps
 from app.core.logger import logger
 from app.core.config import settings
 
@@ -13,7 +14,8 @@ def compress_jpg(input_path: str, output_path: str, quality: int | None = None) 
     original_size = os.path.getsize(input_path)
     img = None
     try:
-        img = Image.open(input_path)
+        with Image.open(input_path) as source:
+            img = ImageOps.exif_transpose(source)
         img.save(output_path, format="JPEG", quality=target_quality, optimize=True)
     except Exception as e:
         logger.error(f"JPG compression error pada {input_path}: {e}")
@@ -50,6 +52,11 @@ async def async_compress_png(input_path: str, output_path: str, timeout: int | N
             )
             try:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout_seconds)
+            except asyncio.CancelledError:
+                if proc.returncode is None:
+                    proc.kill()
+                await proc.wait()
+                raise
             except asyncio.TimeoutError:
                 try:
                     proc.kill()
@@ -67,24 +74,14 @@ async def async_compress_png(input_path: str, output_path: str, timeout: int | N
             logger.warning(f"pngquant execution failed ({e}), fallback ke Pillow...")
 
     # Fallback: Pillow optimize
-    def _pillow_png():
-        img = None
-        try:
-            img = Image.open(input_path)
-            img.save(output_path, format="PNG", optimize=True)
-        finally:
-            if img:
-                try:
-                    img.close()
-                except Exception:
-                    pass
-
     try:
-        await asyncio.to_thread(_pillow_png)
+        await run_engine(_pillow_png, input_path, output_path, timeout=timeout_seconds)
         compressed_size = os.path.getsize(output_path) if os.path.exists(output_path) else original_size
         if compressed_size >= original_size:
             shutil.copy2(input_path, output_path)
             return False
+    except TimeoutError:
+        raise
     except Exception as e:
         logger.error(f"PNG compression error: {e}")
         shutil.copy2(input_path, output_path)
@@ -105,3 +102,16 @@ def compress_png(input_path: str, output_path: str) -> bool:
         return loop.run_until_complete(async_compress_png(input_path, output_path))
     except Exception:
         return asyncio.run(async_compress_png(input_path, output_path))
+
+
+def _pillow_png(input_path, output_path):
+    img = None
+    try:
+        img = Image.open(input_path)
+        img.save(output_path, format="PNG", optimize=True)
+    finally:
+        if img:
+            try:
+                img.close()
+            except Exception:
+                pass

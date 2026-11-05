@@ -8,6 +8,7 @@ export async function getSplitDocumentInfo(file: File): Promise<ApiResponse<Docu
 }
 
 export async function splitDocument(params: {
+  saveToWorkspace?: boolean;
   file: File;
   splitMode: "extract_range" | "fixed_interval" | "all_single";
   rangeExpression?: string;
@@ -15,6 +16,7 @@ export async function splitDocument(params: {
   outputFormat?: "pdf" | "docx";
 }): Promise<ApiResponse<{ job_id: string; document_id: string; original_filename: string; split_mode: string }>> {
   const form = new FormData();
+  form.append("save_to_workspace", String(params.saveToWorkspace ?? false));
   form.append("file", params.file);
   form.append("split_mode", params.splitMode);
   if (params.rangeExpression) form.append("range_expression", params.rangeExpression);

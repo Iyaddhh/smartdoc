@@ -1,5 +1,11 @@
 "use client";
 
+import PageHeading from "@/components/ui/PageHeading";
+import ToolStorage from "@/components/ToolStorage";
+
+import { formatBytes } from "@/lib/format";
+import { MAX_PPTX_MB } from "@/lib/file-validation";
+
 import DownloadLink from "@/components/DownloadLink";
 
 import { useState } from "react";
@@ -11,18 +17,13 @@ import { compressFile, getDownloadUrl, JobStatus } from "@/lib/api";
 import { showToast } from "@/components/Toast";
 import { Minimize2, Download, CheckCircle2, AlertCircle, RefreshCw, ArrowRight } from "lucide-react";
 
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
 
 export default function CompressorPage() {
+  const [saveToWorkspace, setSaveToWorkspace] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [docId, setDocId] = useState<string | null>(null);
   const [originalSize, setOriginalSize] = useState<number>(0);
-  const [outputSize, setOutputSize] = useState<number | null>(null);
   const [doneJob, setDoneJob] = useState<JobStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [isFileLoading, setIsFileLoading] = useState(false);
@@ -33,7 +34,7 @@ export default function CompressorPage() {
     onDone: (j) => {
       setDoneJob(j);
       setLoading(false);
-      showToast("success", "Dokumen berhasil dikompresi dengan rasio optimal!", "Kompresi Selesai");
+      showToast("success", "Hasil kompresi siap diunduh.", "Kompresi Selesai");
     },
     onFailed: (j) => {
       setLoading(false);
@@ -48,7 +49,7 @@ export default function CompressorPage() {
     setDoneJob(null);
     setJobId(null);
 
-    const res = await compressFile(file);
+    const res = await compressFile(file, saveToWorkspace);
 
     if (!res.success || !res.data) {
       setLoading(false);
@@ -69,26 +70,21 @@ export default function CompressorPage() {
     setDoneJob(null);
     setDocId(null);
     setErrorMsg(null);
-    setOutputSize(null);
   };
 
   const isDone = doneJob?.status === "done";
-  const estimatedOutput = originalSize ? Math.max(Math.round(originalSize * 0.52), 1024) : 0;
-  const displayOutput = outputSize || estimatedOutput;
-  const savingsPct = originalSize > 0 ? Math.round(((originalSize - displayOutput) / originalSize) * 100) : 48;
+  const displayOutput = doneJob?.output_size ?? null;
+  const savingsPct = originalSize > 0 && displayOutput !== null ? Math.round(((originalSize - displayOutput) / originalSize) * 100) : null;
 
   return (
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
       {/* Header */}
       <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <h2>
-            File <span className="highlight-span">Compressor</span>
-          </h2>
-          <p>Kecilkan ukuran dokumen secara otomatis tanpa mengurangi keterbacaan.</p>
+          <PageHeading title="Kompresi dokumen" description="Perkecil ukuran berkas agar lebih mudah disimpan dan dibagikan." />
+          <GuideButton onClick={() => setShowGuide(true)} />
         </div>
-        <GuideButton onClick={() => setShowGuide(true)} />
-      </div>
+      <ToolStorage value={saveToWorkspace} onChange={setSaveToWorkspace} disabled={Boolean(jobId)} documentId={docId} done={isDone} />
+
 
       {isDone && docId ? (
         /* Result Panel View (When compression completed - hides other options) */
@@ -97,7 +93,7 @@ export default function CompressorPage() {
           style={{
             maxWidth: "680px",
             margin: "0 auto",
-            padding: "28px 24px",
+            padding: "var(--card-padding)",
             width: "100%",
             boxSizing: "border-box",
             display: "flex",
@@ -110,7 +106,7 @@ export default function CompressorPage() {
               style={{
                 width: "42px",
                 height: "42px",
-                borderRadius: "12px",
+                borderRadius: "var(--radius-cardssmall)",
                 background: "var(--clr-success-bg)",
                 color: "var(--clr-success)",
                 display: "flex",
@@ -122,32 +118,32 @@ export default function CompressorPage() {
               <CheckCircle2 size={24} />
             </div>
             <div>
-              <h3 style={{ fontSize: "17px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+              <h3 style={{ fontSize: "17px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                 Kompresi Berhasil Dilakukan
               </h3>
-              <p style={{ fontSize: "13px", color: "var(--color-warm-gray)", marginTop: "2px" }}>
-                Ukuran dokumen berhasil dipadatkan secara signifikan dan siap diunduh.
+              <p style={{ fontSize: "13px", color: "var(--color-graphite)", marginTop: "2px" }}>
+                Berkas hasil siap diunduh. Ukuran akhir bergantung pada isi dokumen.
               </p>
             </div>
           </div>
 
           <div className="size-comparison">
             <div>
-              <p style={{ fontSize: "11.5px", color: "var(--color-warm-gray)" }}>Ukuran Semula</p>
-              <p style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink-black)" }}>
+              <p style={{ fontSize: "11.5px", color: "var(--color-graphite)" }}>Ukuran Semula</p>
+              <p style={{ fontWeight: 500, fontSize: "15px", color: "var(--color-midnight-ink)" }}>
                 {formatBytes(originalSize || file?.size || 0)}
               </p>
             </div>
             <ArrowRight size={16} className="arrow" />
             <div>
-              <p style={{ fontSize: "11.5px", color: "var(--color-warm-gray)" }}>Setelah Kompresi</p>
-              <p style={{ fontWeight: 600, fontSize: "15px", color: "var(--color-ink-black)" }}>
-                {formatBytes(displayOutput)}
+              <p style={{ fontSize: "11.5px", color: "var(--color-graphite)" }}>Setelah Kompresi</p>
+              <p style={{ fontWeight: 500, fontSize: "15px", color: "var(--color-midnight-ink)" }}>
+                {displayOutput !== null ? formatBytes(displayOutput) : "Ukuran belum tersedia"}
               </p>
             </div>
             <div style={{ marginLeft: "auto" }}>
               <span className="badge badge-done" style={{ fontSize: "12px", padding: "4px 10px" }}>
-                Hemat ~{savingsPct}%
+                {savingsPct !== null ? `Hemat ${savingsPct}%` : "Selesai"}
               </span>
             </div>
           </div>
@@ -176,10 +172,12 @@ export default function CompressorPage() {
           {/* Upload & Action */}
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <div className="card">
-              <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "14px", color: "var(--color-ink-black)" }}>
+              <h3 style={{ fontSize: "15px", fontWeight: 500, marginBottom: "14px", color: "var(--color-midnight-ink)" }}>
                 Pilih Dokumen yang Akan Dikompres
               </h3>
               <FileUpload
+                maxSizeMB={MAX_PPTX_MB}
+                allowLargePptx
                 accept=".pdf,.docx,.xlsx,.pptx,.jpg,.jpeg,.png"
                 label="Pilih atau Letakkan File"
                 description="PDF, Word, Excel, PowerPoint, atau Gambar"
@@ -188,6 +186,7 @@ export default function CompressorPage() {
                 onLoadingChange={setIsFileLoading}
                 disabled={isPolling || loading}
               />
+              <p className="field-hint">PPTX menggunakan kompresi Seimbang. Semua slide, teks, catatan, dan objek dipertahankan; warna atau detail gambar dapat sedikit berubah.</p>
             </div>
 
             {/* Error Alert with Retry */}
@@ -200,7 +199,7 @@ export default function CompressorPage() {
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={handleProcess}
-                  style={{ alignSelf: "flex-start", background: "var(--color-pure-white)" }}
+                  style={{ alignSelf: "flex-start", background: "var(--color-canvas-white)" }}
                 >
                   <RefreshCw size={13} /> Coba Lagi
                 </button>
@@ -236,14 +235,14 @@ export default function CompressorPage() {
 
           {/* Info Column */}
           <div>
-            <div className="card" style={{ background: "var(--color-stone-canvas)", borderStyle: "dashed" }}>
+            <div className="card" style={{ background: "var(--color-canvas-white)", borderStyle: "dashed" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-                <Minimize2 size={18} style={{ color: "var(--color-warm-gray)" }} />
-                <h4 style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-ink-black)" }}>
+                <Minimize2 size={18} style={{ color: "var(--color-graphite)" }} />
+                <h4 style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                   Optimasi Otomatis
                 </h4>
               </div>
-              <p style={{ fontSize: "13px", color: "var(--color-warm-gray)", lineHeight: 1.6 }}>
+              <p style={{ fontSize: "13px", color: "var(--color-graphite)", lineHeight: 1.6 }}>
                 SmartDoc menerapkan algoritma downsampling gambar cerdas dan pembersihan metadata berlebih tanpa merusak keterbacaan teks dan layout dokumen.
               </p>
             </div>

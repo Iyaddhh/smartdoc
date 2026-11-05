@@ -1,5 +1,12 @@
 "use client";
 
+import PageHeading from "@/components/ui/PageHeading";
+import ToolStorage from "@/components/ToolStorage";
+
+import { formatBytes } from "@/lib/format";
+import { isImageFile, validateImageFile, MAX_DOC_MB, MAX_MULTI_IMAGES } from "@/lib/file-validation";
+import { getConversionFormats, type ConversionFormat as OutputFormat } from "@/lib/conversion-formats";
+
 import { useFilePreview } from "@/hooks/useFilePreview";
 import DownloadLink from "@/components/DownloadLink";
 
@@ -32,82 +39,12 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-type OutputFormat = "pdf" | "docx" | "jpg" | "png";
-
-const FORMAT_MAP: Record<string, OutputFormat[]> = {
-  ".docx": ["pdf"],
-  ".xlsx": ["pdf"],
-  ".pptx": ["pdf"],
-  ".pdf": ["docx", "jpg", "png"],
-  ".jpg": ["pdf"],
-  ".jpeg": ["pdf"],
-  ".png": ["pdf"],
-};
-
 const FORMAT_LABELS: Record<string, string> = {
   pdf: "Dokumen PDF (.pdf)",
   docx: "Microsoft Word (.docx)",
   jpg: "Gambar JPEG (.jpg)",
   png: "Gambar PNG (.png)",
 };
-
-const IMAGE_EXTS = [".jpg", ".jpeg", ".png"];
-
-function getExtension(filename: string): string {
-  return "." + filename.split(".").pop()!.toLowerCase();
-}
-
-function isImageFile(filename: string): boolean {
-  return IMAGE_EXTS.includes(getExtension(filename));
-}
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return "0 B";
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-}
-
-const MAX_IMAGE_MB = 12;
-const MAX_DOC_MB = 35;
-const MAX_IMAGE_DIM_PX = 10000;
-const MAX_MULTI_IMAGES = 50;
-
-async function validateImageFile(file: File): Promise<{ valid: boolean; error?: string }> {
-  const ext = getExtension(file.name);
-  if (!IMAGE_EXTS.includes(ext)) {
-    return { valid: false, error: `Format "${ext}" pada "${file.name}" tidak didukung. Format gambar yang didukung: JPG, JPEG, PNG.` };
-  }
-
-  const maxBytes = MAX_IMAGE_MB * 1024 * 1024;
-  if (file.size > maxBytes) {
-    return { valid: false, error: `Ukuran "${file.name}" (${formatBytes(file.size)}) melebihi batas maksimal ${MAX_IMAGE_MB} MB.` };
-  }
-
-  if (file.size === 0) {
-    return { valid: false, error: `Berkas "${file.name}" kosong (0 bytes).` };
-  }
-
-  return new Promise((resolve) => {
-    const img = new Image();
-    const objUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objUrl);
-      if (img.width > MAX_IMAGE_DIM_PX || img.height > MAX_IMAGE_DIM_PX) {
-        resolve({
-          valid: false,
-          error: `Dimensi "${file.name}" (${img.width}×${img.height}px) melebihi batas maksimal ${MAX_IMAGE_DIM_PX}px.`,
-        });
-      } else {
-        resolve({ valid: true });
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(objUrl);
-      resolve({ valid: false, error: `Berkas "${file.name}" tidak dapat dibaca atau corrupt.` });
-    };
-    img.src = objUrl;
-  });
-}
 
 function ImageItemPreview({ file }: { file: File }) {
   const [src, setSrc] = useState<string | null>(null);
@@ -127,10 +64,10 @@ function ImageItemPreview({ file }: { file: File }) {
       style={{
         width: "38px",
         height: "38px",
-        borderRadius: "6px",
+        borderRadius: "var(--radius-cardssmall)",
         overflow: "hidden",
-        background: "var(--color-stone-canvas)",
-        border: "1px solid var(--color-stone-border)",
+        background: "var(--color-canvas-white)",
+        border: "1px solid var(--color-ash)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -148,7 +85,7 @@ function ImageItemPreview({ file }: { file: File }) {
           }}
         />
       ) : (
-        <FileImage size={18} style={{ color: "#0891b2" }} />
+        <FileImage size={18} style={{ color: "var(--color-electric-blue)" }} />
       )}
     </div>
   );
@@ -156,16 +93,17 @@ function ImageItemPreview({ file }: { file: File }) {
 
 function getFormatIcon(ext: string) {
   const cleanExt = ext.replace(".", "").toLowerCase();
-  if (cleanExt === "pdf") return <FileText size={20} style={{ color: "#ef4444" }} />;
-  if (["doc", "docx"].includes(cleanExt)) return <FileText size={20} style={{ color: "#2563eb" }} />;
-  if (["xls", "xlsx"].includes(cleanExt)) return <FileSpreadsheet size={20} style={{ color: "#16a34a" }} />;
-  if (["ppt", "pptx"].includes(cleanExt)) return <Presentation size={20} style={{ color: "#ea580c" }} />;
-  if (["jpg", "jpeg", "png"].includes(cleanExt)) return <FileImage size={20} style={{ color: "#0891b2" }} />;
-  if (cleanExt === "zip") return <Archive size={20} style={{ color: "#8b5cf6" }} />;
-  return <FileText size={20} style={{ color: "var(--color-ink-black)" }} />;
+  if (cleanExt === "pdf") return <FileText size={20} style={{ color: "var(--clr-error)" }} />;
+  if (["doc", "docx"].includes(cleanExt)) return <FileText size={20} style={{ color: "var(--color-electric-blue)" }} />;
+  if (["xls", "xlsx"].includes(cleanExt)) return <FileSpreadsheet size={20} style={{ color: "var(--clr-success)" }} />;
+  if (["ppt", "pptx"].includes(cleanExt)) return <Presentation size={20} style={{ color: "var(--clr-warning)" }} />;
+  if (["jpg", "jpeg", "png"].includes(cleanExt)) return <FileImage size={20} style={{ color: "var(--color-electric-blue)" }} />;
+  if (cleanExt === "zip") return <Archive size={20} style={{ color: "var(--color-electric-blue)" }} />;
+  return <FileText size={20} style={{ color: "var(--color-midnight-ink)" }} />;
 }
 
 export default function ConverterPage() {
+  const [saveToWorkspace, setSaveToWorkspace] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [outputFormat, setOutputFormat] = useState<OutputFormat | "">("");
   const [customTitle, setCustomTitle] = useState<string>("");
@@ -200,15 +138,10 @@ export default function ConverterPage() {
   });
 
   const isMultiImage = files.length > 1 && files.every((f) => isImageFile(f.name));
-  const isSingleImage = files.length === 1 && isImageFile(files[0].name);
   const isImageMode = files.length > 0 && files.every((f) => isImageFile(f.name));
   const primaryFile = files[0] || null;
 
-  const availableFormats = primaryFile
-    ? isImageMode
-      ? (["pdf"] as OutputFormat[])
-      : FORMAT_MAP[getExtension(primaryFile.name)] ?? []
-    : [];
+  const availableFormats = getConversionFormats(files);
 
   const isDone = doneJob?.status === "done";
 
@@ -253,7 +186,6 @@ export default function ConverterPage() {
       setOutputFormat("pdf");
     } else {
       const f = selectedFiles[0];
-      const ext = getExtension(f.name);
       if (isImageFile(f.name)) {
         setIsFileLoading(true);
         const res = await validateImageFile(f);
@@ -266,7 +198,7 @@ export default function ConverterPage() {
         setOutputFormat("pdf");
       } else {
         setFiles([f]);
-        const exts = FORMAT_MAP[ext] ?? [];
+        const exts = getConversionFormats([f]);
         setOutputFormat(exts.length === 1 ? exts[0] : "");
       }
     }
@@ -349,7 +281,7 @@ export default function ConverterPage() {
     setDocDetails(null);
 
     const payload = files.length === 1 ? files[0] : files;
-    const res = await convertFile(payload, outputFormat, customTitle || undefined);
+    const res = await convertFile(payload, outputFormat, customTitle || undefined, saveToWorkspace);
 
     if (!res.success || !res.data) {
       setLoading(false);
@@ -395,14 +327,11 @@ export default function ConverterPage() {
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
       {/* Header */}
       <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <h2>
-            Document <span className="highlight-span">Converter</span>
-          </h2>
-          <p>Konversi dokumen antar berbagai format atau gabungkan banyak gambar ke PDF secara instan dan rapi.</p>
+          <PageHeading title="Konversi dokumen" description="Ubah format dokumen atau gabungkan gambar menjadi PDF." />
+          <GuideButton onClick={() => setShowGuide(true)} />
         </div>
-        <GuideButton onClick={() => setShowGuide(true)} />
-      </div>
+      <ToolStorage value={saveToWorkspace} onChange={setSaveToWorkspace} disabled={Boolean(jobId)} documentId={docId} done={isDone} />
+
 
       {isDone && docId ? (
         /* =========================================================================
@@ -423,7 +352,7 @@ export default function ConverterPage() {
           <div
             className="card"
             style={{
-              padding: "20px",
+              padding: "var(--card-padding)",
               display: "flex",
               flexDirection: "column",
               gap: "16px",
@@ -439,23 +368,23 @@ export default function ConverterPage() {
                 flexWrap: "wrap",
                 gap: "10px",
                 paddingBottom: "12px",
-                borderBottom: "1px solid var(--color-stone-border)",
+                borderBottom: "1px solid var(--color-ash)",
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Eye size={17} style={{ color: "var(--color-cyan-edge)" }} />
-                <span style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                <Eye size={17} style={{ color: "var(--color-electric-blue)" }} />
+                <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                   Pratinjau Hasil Dokumen
                 </span>
                 <span
                   style={{
                     fontSize: "11px",
-                    fontWeight: 600,
+                    fontWeight: 500,
                     padding: "2px 8px",
-                    borderRadius: "6px",
-                    background: "var(--color-stone-canvas)",
-                    color: "var(--color-warm-gray)",
-                    border: "1px solid var(--color-stone-border)",
+                    borderRadius: "var(--radius-cardssmall)",
+                    background: "var(--color-canvas-white)",
+                    color: "var(--color-graphite)",
+                    border: "1px solid var(--color-ash)",
                   }}
                 >
                   .{outputExt.toUpperCase()}
@@ -495,11 +424,11 @@ export default function ConverterPage() {
                 style={{
                   width: "100%",
                   height: "520px",
-                  borderRadius: "10px",
+                  borderRadius: "var(--radius-cardssmall)",
                   overflow: "hidden",
-                  border: "1px solid var(--color-stone-border)",
-                  background: "#525659",
-                  boxShadow: "inset 0 2px 8px rgba(0,0,0,0.15)",
+                  border: "1px solid var(--color-ash)",
+                  background: "var(--color-graphite)",
+                  boxShadow: "none",
                 }}
               >
                 <iframe
@@ -517,10 +446,10 @@ export default function ConverterPage() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  background: "var(--color-stone-canvas)",
-                  borderRadius: "10px",
+                  background: "var(--color-canvas-white)",
+                  borderRadius: "var(--radius-cardssmall)",
                   padding: "16px",
-                  border: "1px solid var(--color-stone-border)",
+                  border: "1px solid var(--color-ash)",
                   overflow: "hidden",
                 }}
               >
@@ -531,8 +460,8 @@ export default function ConverterPage() {
                     maxWidth: "100%",
                     maxHeight: "440px",
                     objectFit: "contain",
-                    borderRadius: "6px",
-                    boxShadow: "0 6px 18px rgba(0,0,0,0.08)",
+                    borderRadius: "var(--radius-cardssmall)",
+                    boxShadow: "none",
                   }}
                 />
               </div>
@@ -546,9 +475,9 @@ export default function ConverterPage() {
                   justifyContent: "center",
                   textAlign: "center",
                   gap: "14px",
-                  background: "var(--color-stone-canvas)",
-                  borderRadius: "10px",
-                  border: "1px dashed var(--color-stone-border)",
+                  background: "var(--color-canvas-white)",
+                  borderRadius: "var(--radius-cardssmall)",
+                  border: "1px dashed var(--color-ash)",
                 }}
               >
                 <div
@@ -556,8 +485,8 @@ export default function ConverterPage() {
                     width: "56px",
                     height: "56px",
                     borderRadius: "16px",
-                    background: "var(--color-sky-wash)",
-                    color: "var(--color-cyan-edge)",
+                    background: "var(--color-active-blue)",
+                    color: "var(--color-electric-blue)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -566,10 +495,10 @@ export default function ConverterPage() {
                   <Archive size={28} />
                 </div>
                 <div>
-                  <h4 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                  <h4 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                     Arsip Gambar Multi-Halaman (.ZIP)
                   </h4>
-                  <p style={{ fontSize: "13px", color: "var(--color-warm-gray)", marginTop: "4px", margin: 0, maxWidth: "460px" }}>
+                  <p style={{ fontSize: "13px", color: "var(--color-graphite)", marginTop: "4px", margin: 0, maxWidth: "460px" }}>
                     Semua halaman PDF telah berhasil dirender menjadi berkas gambar beresolusi tinggi dan dikemas ke dalam arsip ZIP siap diekstrak.
                   </p>
                 </div>
@@ -584,9 +513,9 @@ export default function ConverterPage() {
                   justifyContent: "center",
                   textAlign: "center",
                   gap: "14px",
-                  background: "var(--color-stone-canvas)",
-                  borderRadius: "10px",
-                  border: "1px dashed var(--color-stone-border)",
+                  background: "var(--color-canvas-white)",
+                  borderRadius: "var(--radius-cardssmall)",
+                  border: "1px dashed var(--color-ash)",
                 }}
               >
                 <div
@@ -594,8 +523,8 @@ export default function ConverterPage() {
                     width: "56px",
                     height: "56px",
                     borderRadius: "16px",
-                    background: "#eff6ff",
-                    color: "#2563eb",
+                    background: "var(--color-canvas-white)",
+                    color: "var(--color-electric-blue)",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
@@ -604,10 +533,10 @@ export default function ConverterPage() {
                   <FileText size={28} />
                 </div>
                 <div>
-                  <h4 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                  <h4 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                     Dokumen Microsoft Word (.DOCX)
                   </h4>
-                  <p style={{ fontSize: "13px", color: "var(--color-warm-gray)", marginTop: "4px", margin: 0, maxWidth: "460px" }}>
+                  <p style={{ fontSize: "13px", color: "var(--color-graphite)", marginTop: "4px", margin: 0, maxWidth: "460px" }}>
                     Berkas Word hasil konversi siap dibuka dan diedit secara penuh menggunakan Microsoft Word, Google Docs, atau LibreOffice Writer.
                   </p>
                 </div>
@@ -627,25 +556,25 @@ export default function ConverterPage() {
               <div
                 style={{
                   padding: "14px",
-                  borderRadius: "10px",
-                  background: "var(--color-stone-canvas)",
-                  border: "1px solid var(--color-stone-border)",
+                  borderRadius: "var(--radius-cardssmall)",
+                  background: "var(--color-canvas-white)",
+                  border: "1px solid var(--color-ash)",
                   display: "flex",
                   alignItems: "center",
                   gap: "12px",
                 }}
               >
                 <div style={{ flexShrink: 0 }}>
-                  {files.length > 1 ? <FileImage size={20} style={{ color: "#0891b2" }} /> : primaryFile ? getFormatIcon(primaryFile.name) : <FileText size={20} />}
+                  {files.length > 1 ? <FileImage size={20} style={{ color: "var(--color-electric-blue)" }} /> : primaryFile ? getFormatIcon(primaryFile.name) : <FileText size={20} />}
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <span style={{ fontSize: "11px", color: "var(--color-ash-gray)", fontWeight: 500, display: "block" }}>
+                  <span style={{ fontSize: "11px", color: "var(--color-graphite)", fontWeight: 500, display: "block" }}>
                     Berkas Sumber (Asal)
                   </span>
-                  <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-ink-black)", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {files.length > 1 ? `${files.length} Berkas Gambar` : primaryFile?.name || "Dokumen Sumber"}
                   </p>
-                  <span style={{ fontSize: "11.5px", color: "var(--color-warm-gray)" }}>
+                  <span style={{ fontSize: "11.5px", color: "var(--color-graphite)" }}>
                     {formatBytes(totalInputSize)}
                   </span>
                 </div>
@@ -655,9 +584,9 @@ export default function ConverterPage() {
               <div
                 style={{
                   padding: "14px",
-                  borderRadius: "10px",
-                  background: "var(--color-stone-canvas)",
-                  border: "1px solid var(--color-stone-border)",
+                  borderRadius: "var(--radius-cardssmall)",
+                  background: "var(--color-canvas-white)",
+                  border: "1px solid var(--color-ash)",
                   display: "flex",
                   alignItems: "center",
                   gap: "12px",
@@ -665,13 +594,13 @@ export default function ConverterPage() {
               >
                 <div style={{ flexShrink: 0 }}>{getFormatIcon(outputFileName)}</div>
                 <div style={{ minWidth: 0 }}>
-                  <span style={{ fontSize: "11px", color: "var(--color-ash-gray)", fontWeight: 500, display: "block" }}>
+                  <span style={{ fontSize: "11px", color: "var(--color-graphite)", fontWeight: 500, display: "block" }}>
                     Berkas Hasil Konversi
                   </span>
-                  <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-ink-black)", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  <p style={{ fontSize: "13px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: "2px 0 0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {outputFileName}
                   </p>
-                  <span style={{ fontSize: "11.5px", color: "var(--color-warm-gray)" }}>
+                  <span style={{ fontSize: "11.5px", color: "var(--color-graphite)" }}>
                     {docDetails?.output_size ? formatBytes(docDetails.output_size) : "Optimal"}
                   </span>
                 </div>
@@ -687,7 +616,7 @@ export default function ConverterPage() {
                 flexWrap: "wrap",
                 gap: "12px",
                 paddingTop: "12px",
-                borderTop: "1px solid var(--color-stone-border)",
+                borderTop: "1px solid var(--color-ash)",
               }}
             >
               <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
@@ -714,7 +643,7 @@ export default function ConverterPage() {
                 style={{
                   fontSize: "13px",
                   fontWeight: 500,
-                  color: "var(--color-cyan-edge)",
+                  color: "var(--color-electric-blue)",
                   textDecoration: "none",
                   display: "inline-flex",
                   alignItems: "center",
@@ -737,7 +666,7 @@ export default function ConverterPage() {
             {/* Case A: No file selected yet */}
             {files.length === 0 && (
               <div className="card">
-                <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "14px", color: "var(--color-ink-black)" }}>
+                <h3 style={{ fontSize: "15px", fontWeight: 500, marginBottom: "14px", color: "var(--color-midnight-ink)" }}>
                   Pilih Dokumen atau Gambar
                 </h3>
                 <FileUpload
@@ -757,7 +686,7 @@ export default function ConverterPage() {
             {/* Case B: Single Non-Image Document (PDF / DOCX / XLSX / PPTX) */}
             {files.length === 1 && !isImageMode && (
               <div className="card">
-                <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "14px", color: "var(--color-ink-black)" }}>
+                <h3 style={{ fontSize: "15px", fontWeight: 500, marginBottom: "14px", color: "var(--color-midnight-ink)" }}>
                   Dokumen Sumber Terpilih
                 </h3>
                 <FileUpload
@@ -778,34 +707,34 @@ export default function ConverterPage() {
             {isImageMode && (
               <div className="card animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
                 {/* List Header Toolbar */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid var(--color-stone-border)", paddingBottom: "10px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid var(--color-ash)", paddingBottom: "10px" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <div
                       style={{
                         width: "26px",
                         height: "26px",
-                        borderRadius: "6px",
-                        background: "var(--color-sky-wash)",
-                        color: "var(--color-cyan-edge)",
+                        borderRadius: "var(--radius-cardssmall)",
+                        background: "var(--color-active-blue)",
+                        color: "var(--color-electric-blue)",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontWeight: 700,
+                        fontWeight: 500,
                         fontSize: "12px",
                       }}
                     >
                       {files.length}
                     </div>
                     <div>
-                      <h4 style={{ fontSize: "14px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                      <h4 style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                         {files.length} Berkas Gambar Dipilih
                       </h4>
                       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "2px", flexWrap: "wrap" }}>
                         <span
                           style={{
                             fontSize: "11.5px",
-                            color: totalInputSize > MAX_DOC_MB * 1024 * 1024 ? "#dc2626" : "var(--color-warm-gray)",
-                            fontWeight: totalInputSize > MAX_DOC_MB * 1024 * 1024 ? 600 : 400,
+                            color: totalInputSize > MAX_DOC_MB * 1024 * 1024 ? "#dc2626" : "var(--color-graphite)",
+                            fontWeight: 500,
                           }}
                         >
                           Total ukuran: <strong>{formatBytes(totalInputSize)}</strong> / 35 MB
@@ -814,12 +743,12 @@ export default function ConverterPage() {
                           <span
                             style={{
                               fontSize: "10px",
-                              fontWeight: 700,
+                              fontWeight: 500,
                               padding: "1px 6px",
-                              borderRadius: "4px",
-                              background: "#fee2e2",
-                              color: "#dc2626",
-                              border: "1px solid #fecaca",
+                              borderRadius: "var(--radius-cardssmall)",
+                              background: "var(--clr-error-bg)",
+                              color: "var(--clr-error)",
+                              border: "1px solid var(--clr-error-border)",
                               display: "inline-flex",
                               alignItems: "center",
                               gap: "3px",
@@ -849,7 +778,7 @@ export default function ConverterPage() {
                       className="btn btn-secondary btn-sm"
                       onClick={resetAll}
                       disabled={isPolling || loading}
-                      style={{ fontSize: "12px", color: "var(--color-warm-gray)" }}
+                      style={{ fontSize: "12px", color: "var(--color-graphite)" }}
                       title="Hapus semua gambar"
                     >
                       Batal Semua
@@ -875,9 +804,9 @@ export default function ConverterPage() {
                         alignItems: "center",
                         justifyContent: "space-between",
                         padding: "8px 12px",
-                        borderRadius: "8px",
-                        background: "var(--color-stone-canvas)",
-                        border: "1px solid var(--color-stone-border)",
+                        borderRadius: "var(--radius-cardssmall)",
+                        background: "var(--color-canvas-white)",
+                        border: "1px solid var(--color-ash)",
                         gap: "10px",
                       }}
                     >
@@ -885,8 +814,8 @@ export default function ConverterPage() {
                         <span
                           style={{
                             fontSize: "11px",
-                            fontWeight: 700,
-                            color: "var(--color-ash-gray)",
+                            fontWeight: 500,
+                            color: "var(--color-graphite)",
                             minWidth: "22px",
                             textAlign: "center",
                           }}
@@ -898,8 +827,8 @@ export default function ConverterPage() {
                           <p
                             style={{
                               fontSize: "13px",
-                              fontWeight: 600,
-                              color: "var(--color-ink-black)",
+                              fontWeight: 500,
+                              color: "var(--color-midnight-ink)",
                               margin: 0,
                               overflow: "hidden",
                               textOverflow: "ellipsis",
@@ -909,7 +838,7 @@ export default function ConverterPage() {
                           >
                             {imgFile.name}
                           </p>
-                          <span style={{ fontSize: "11px", color: "var(--color-warm-gray)" }}>
+                          <span style={{ fontSize: "11px", color: "var(--color-graphite)" }}>
                             {formatBytes(imgFile.size)}
                           </span>
                         </div>
@@ -942,7 +871,7 @@ export default function ConverterPage() {
                           onClick={() => handleRemoveImage(idx)}
                           disabled={isPolling || loading}
                           className="btn btn-secondary btn-sm"
-                          style={{ padding: "4px 6px", height: "26px", color: "#dc2626" }}
+                          style={{ padding: "4px 6px", height: "26px", color: "var(--clr-error)" }}
                           title="Hapus gambar ini"
                         >
                           <X size={13} />
@@ -966,11 +895,11 @@ export default function ConverterPage() {
                   <div
                     style={{
                       padding: "8px 12px",
-                      borderRadius: "6px",
-                      background: "rgba(8, 145, 178, 0.06)",
-                      border: "1px dashed rgba(8, 145, 178, 0.3)",
+                      borderRadius: "var(--radius-cardssmall)",
+                      background: "rgba(37, 99, 235, 0.06)",
+                      border: "1px dashed rgba(37, 99, 235, 0.3)",
                       fontSize: "12px",
-                      color: "var(--color-cyan-edge)",
+                      color: "var(--color-electric-blue)",
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
@@ -987,11 +916,11 @@ export default function ConverterPage() {
             {files.length > 0 && availableFormats.length > 0 && (
               <div className="card animate-fade-in" style={{ opacity: isFileLoading ? 0.6 : 1, transition: "opacity 0.2s ease" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                  <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                     Pilih Format Output
                   </h3>
                   {isFileLoading && (
-                    <span style={{ fontSize: "11.5px", color: "var(--color-cyan-edge)", display: "flex", alignItems: "center", gap: "4px" }}>
+                    <span style={{ fontSize: "11.5px", color: "var(--color-electric-blue)", display: "flex", alignItems: "center", gap: "4px" }}>
                       <span className="animate-spin">⟳</span> Menyiapkan...
                     </span>
                   )}
@@ -1007,8 +936,8 @@ export default function ConverterPage() {
                         padding: "10px 14px",
                         borderRadius: "var(--radius-inputs)",
                         cursor: (isPolling || loading || isFileLoading) ? "not-allowed" : "pointer",
-                        border: `1px solid ${outputFormat === fmt ? "var(--color-cyan-edge)" : "var(--color-stone-border)"}`,
-                        background: outputFormat === fmt ? "var(--color-sky-wash)" : "var(--color-pure-white)",
+                        border: `1px solid ${outputFormat === fmt ? "var(--color-electric-blue)" : "var(--color-ash)"}`,
+                        background: outputFormat === fmt ? "var(--color-active-blue)" : "var(--color-canvas-white)",
                         transition: "var(--transition-fast)",
                       }}
                     >
@@ -1019,9 +948,9 @@ export default function ConverterPage() {
                         checked={outputFormat === fmt}
                         onChange={() => setOutputFormat(fmt)}
                         disabled={isPolling || loading || isFileLoading || isImageMode}
-                        style={{ accentColor: "var(--color-cyan-edge)" }}
+                        style={{ accentColor: "var(--color-electric-blue)" }}
                       />
-                      <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-ink-black)" }}>
+                      <span style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                         {FORMAT_LABELS[fmt]}
                       </span>
                     </label>
@@ -1040,7 +969,7 @@ export default function ConverterPage() {
                 <button
                   className="btn btn-secondary btn-sm"
                   onClick={handleProcess}
-                  style={{ alignSelf: "flex-start", background: "var(--color-pure-white)" }}
+                  style={{ alignSelf: "flex-start", background: "var(--color-canvas-white)" }}
                 >
                   <RefreshCw size={13} /> Coba Lagi
                 </button>
@@ -1085,14 +1014,14 @@ export default function ConverterPage() {
 
           {/* Info Column */}
           <div>
-            <div className="card" style={{ background: "var(--color-stone-canvas)", borderStyle: "dashed" }}>
+            <div className="card" style={{ background: "var(--color-canvas-white)", borderStyle: "dashed" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-                <FileOutput size={18} style={{ color: "var(--color-warm-gray)" }} />
-                <h4 style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-ink-black)" }}>
+                <FileOutput size={18} style={{ color: "var(--color-graphite)" }} />
+                <h4 style={{ fontSize: "14px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                   Alur Pemrosesan
                 </h4>
               </div>
-              <p style={{ fontSize: "13px", color: "var(--color-warm-gray)", lineHeight: 1.6 }}>
+              <p style={{ fontSize: "13px", color: "var(--color-graphite)", lineHeight: 1.6 }}>
                 Unggah dokumen tunggal (PDF / Office) untuk dikonversi ke format lain, atau unggah beberapa gambar sekaligus (JPG / PNG) untuk digabungkan secara instan menjadi satu dokumen PDF siap pakai.
               </p>
             </div>
@@ -1106,7 +1035,7 @@ export default function ConverterPage() {
           style={{
             position: "fixed",
             inset: 0,
-            backgroundColor: "rgba(12, 10, 9, 0.8)",
+            backgroundColor: "rgba(10, 10, 10, 0.8)",
             backdropFilter: "blur(8px)",
             zIndex: 99999,
             display: "flex",
@@ -1119,8 +1048,8 @@ export default function ConverterPage() {
           <div
             style={{
               padding: "14px 24px",
-              background: "rgba(28, 25, 23, 0.95)",
-              color: "#ffffff",
+              background: "rgba(23, 23, 23, 0.95)",
+              color: "var(--color-canvas-white)",
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
@@ -1129,8 +1058,8 @@ export default function ConverterPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <Eye size={18} color="var(--color-cyan-signal)" />
-              <span style={{ fontSize: "14px", fontWeight: 600 }}>{outputFileName}</span>
+              <Eye size={18} color="var(--color-electric-blue)" />
+              <span style={{ fontSize: "14px", fontWeight: 500 }}>{outputFileName}</span>
             </div>
 
             <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -1147,10 +1076,10 @@ export default function ConverterPage() {
                 style={{
                   background: "transparent",
                   border: "none",
-                  color: "#ffffff",
+                  color: "var(--color-canvas-white)",
                   cursor: "pointer",
                   padding: "6px",
-                  borderRadius: "6px",
+                  borderRadius: "var(--radius-cardssmall)",
                   display: "flex",
                 }}
               >
@@ -1178,9 +1107,9 @@ export default function ConverterPage() {
                 style={{
                   width: "90%",
                   height: "90%",
-                  borderRadius: "12px",
+                  borderRadius: "var(--radius-cardssmall)",
                   border: "1px solid rgba(255,255,255,0.15)",
-                  boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+                  boxShadow: "none",
                 }}
               />
             ) : isImageOutput ? (
@@ -1191,8 +1120,8 @@ export default function ConverterPage() {
                   maxWidth: "92%",
                   maxHeight: "92%",
                   objectFit: "contain",
-                  borderRadius: "12px",
-                  boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+                  borderRadius: "var(--radius-cardssmall)",
+                  boxShadow: "none",
                 }}
               />
             ) : null}

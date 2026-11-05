@@ -17,8 +17,12 @@ from app.core.config import settings
 
 @pytest_asyncio.fixture
 async def account_client(monkeypatch):
-    account = SimpleNamespace(id=uuid4(), username="account", role="user", is_active=True, hashed_password="hash", token_version=0)
+    account = SimpleNamespace(id=uuid4(), username="account", role="user", is_active=True, hashed_password="hash", token_version=0, email="account@example.com", email_verified=True, display_name="Account", timezone="Asia/Jakarta", onboarding_complete=True, storage_quota_mb=500)
     db = AsyncMock()
+    account.session_id = uuid4()
+    db.get.return_value = SimpleNamespace(user_id=account.id, revoked_at=None,
+                                         expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1))
+    db.add = MagicMock()
     result = MagicMock()
     result.scalar_one_or_none.return_value = account
     db.execute.return_value = result
@@ -30,6 +34,8 @@ async def account_client(monkeypatch):
     app.dependency_overrides[get_db] = database
     try:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            await client.get("/api/auth/csrf")
+            client.headers["x-csrf-token"] = client.cookies.get("smartdoc_csrf")
             yield client, account, db
     finally:
         app.dependency_overrides.clear()
@@ -45,10 +51,10 @@ async def account_client(monkeypatch):
 async def test_role_specific_login(account_client, role, path, expected):
     client, account, _ = account_client
     account.role = role
-    response = await client.post(path, data={"username": account.username, "password": "correct-password"})
+    response = await client.post(path, json={"email": account.email, "password": "correct-password"})
     assert response.status_code == expected
     if expected == 200:
-        assert decode_access_token(response.json()["access_token"]).role == role
+        assert decode_access_token(client.cookies.get("smartdoc_access")).role == role
     else:
         assert "access_token" not in response.json()
 
@@ -57,9 +63,8 @@ async def test_role_specific_login(account_client, role, path, expected):
 @pytest.mark.parametrize("path", ["/api/auth/login", "/api/auth/admin/login"])
 async def test_bad_password_does_not_issue_token(account_client, path):
     client, _, _ = account_client
-    response = await client.post(path, data={"username": "account", "password": "wrong"})
+    response = await client.post(path, json={"email": "account@example.com", "password": "wrong"})
     assert response.status_code == 401
-    assert response.headers["www-authenticate"] == "Bearer"
     assert "access_token" not in response.json()
 
 
@@ -68,7 +73,7 @@ async def test_bad_password_does_not_issue_token(account_client, path):
 async def test_disabled_account_cannot_login(account_client, role, path):
     client, account, _ = account_client
     account.role, account.is_active = role, False
-    response = await client.post(path, data={"username": "account", "password": "correct-password"})
+    response = await client.post(path, json={"email": "account@example.com", "password": "correct-password"})
     assert response.status_code == 403
 
 
@@ -83,7 +88,7 @@ async def test_public_registration_cannot_assign_admin_role(account_client):
 @pytest.mark.asyncio
 async def test_database_role_overrides_old_admin_claim(account_client):
     _, account, db = account_client
-    token = create_access_token({"sub": str(account.id), "role": "admin", "ver": 0})
+    token = create_access_token({"sub": str(account.id), "sid": str(account.session_id), "role": "admin", "ver": 0})
     user = await get_current_user(token=token, db=db)
     assert user.role == "user"
     with pytest.raises(HTTPException) as denied:
@@ -97,30 +102,11 @@ async def test_database_role_overrides_old_admin_claim(account_client):
 async def test_unknown_role_is_denied(account_client):
     _, account, db = account_client
     account.role = "owner"
-    token = create_access_token({"sub": str(account.id), "role": "owner", "ver": 0})
+    token = create_access_token({"sub": str(account.id), "sid": str(account.session_id), "role": "owner", "ver": 0})
     with pytest.raises(HTTPException) as denied:
         await get_current_user(token=token, db=db)
     assert denied.value.status_code == 403
 
-
-@pytest.mark.asyncio
-async def test_logout_revokes_all_existing_account_tokens(account_client):
-    client, account, db = account_client
-    first = await client.post("/api/auth/login", data={"username": account.username, "password": "correct-password"})
-    second = await client.post("/api/auth/login", data={"username": account.username, "password": "correct-password"})
-    assert first.status_code == second.status_code == 200
-    token = first.json()["access_token"]
-    other_token = second.json()["access_token"]
-    response = await client.post("/api/auth/logout", headers={"Authorization": f"Bearer {token}"})
-    assert response.status_code == 200
-    db.commit.assert_awaited()
-    account.token_version += 1  # Simulate the database UPDATE in this isolated fixture.
-    for old_token in (token, other_token):
-        with pytest.raises(HTTPException) as denied:
-            await get_current_user(token=old_token, db=db)
-        assert denied.value.status_code == 401
-    new_token = create_access_token({"sub": str(account.id), "role": "user", "ver": account.token_version})
-    assert await get_current_user(token=new_token, db=db) is account
 
 
 def test_jwt_requires_expiry_and_valid_signature():

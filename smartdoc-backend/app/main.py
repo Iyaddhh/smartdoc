@@ -9,19 +9,24 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi.middleware import SlowAPIMiddleware
 from app.core.request_limits import RequestSizeLimitMiddleware
+from app.core.auth_cookies import AuthCacheMiddleware
 from app.core.config import settings
 from app.core.logger import logger
 from app.core.response import ok_response, fail_response
 from app.core.cleanup import clean_expired_temp_files
-from app.db.base import engine, get_db
+from app.db.base import engine, get_db, AsyncSessionLocal
 from app.db.migrations import upgrade_database
+from app.services.job_recovery import processing_runtime_lock, recover_interrupted_jobs
 from app.models import Document, Job, User  # Register models for Base metadata
 # Reload trigger
 
 # Import all routers
 from app.api.auth import router as auth_router
 from app.api.guest import router as guest_router, clean_guest_orphans
+from app.api.workspace import router as workspace_router
+from app.api.admin import router as admin_router
 from app.api.jobs import router as jobs_router
+from app.services.document_storage import reconcile_storage, cleanup_expired_results
 from app.api.compressor import router as compressor_router
 from app.api.converter import router as converter_router
 from app.api.splitter import router as splitter_router
@@ -36,6 +41,8 @@ async def _periodic_temp_cleanup_task():
         try:
             await asyncio.sleep(3600)  # Run every 1 hour
             await asyncio.to_thread(clean_expired_temp_files, ttl_hours=settings.TEMP_FILE_TTL_HOURS)
+            async with AsyncSessionLocal() as db:
+                await cleanup_expired_results(db)
             logger.info("Auto-cleanup periodic loop executed successfully.")
         except asyncio.CancelledError:
             logger.info("Auto-cleanup periodic task cleanly cancelled.")
@@ -47,37 +54,40 @@ async def _periodic_temp_cleanup_task():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"SmartDoc Backend starting in {settings.APP_ENV} mode...")
-
-    await upgrade_database()
-    await asyncio.to_thread(clean_guest_orphans)
-    logger.info("Alembic migrations applied successfully (upgrade head).")
-
-    # Ensure storage directories exist
-    for subdir in [
-        "temp/uploads", "temp/processing",
-        "documents/originals", "documents/outputs"
-    ]:
-        os.makedirs(os.path.join(settings.STORAGE_PATH, subdir), exist_ok=True)
-
-    # Initial cleanup on startup
     try:
-        await asyncio.to_thread(clean_expired_temp_files, ttl_hours=settings.TEMP_FILE_TTL_HOURS)
-    except Exception as e:
-        logger.warning(f"Initial auto-cleanup warning: {e}")
+        async with processing_runtime_lock():
+            await upgrade_database()
+            logger.info("Alembic migrations applied successfully (upgrade head).")
+            async with AsyncSessionLocal() as db:
+                recovered = await recover_interrupted_jobs(db)
+                await reconcile_storage(db)
+                await cleanup_expired_results(db)
+            logger.info("Startup marked {} interrupted document jobs as failed.", recovered)
+            await asyncio.to_thread(clean_guest_orphans)
 
-    # Start periodic background cleanup task
-    cleanup_task = asyncio.create_task(_periodic_temp_cleanup_task())
+            for subdir in [
+                "temp/uploads", "temp/processing",
+                "documents/originals", "documents/outputs"
+            ]:
+                os.makedirs(os.path.join(settings.STORAGE_PATH, subdir), exist_ok=True)
 
-    yield
+            try:
+                await asyncio.to_thread(clean_expired_temp_files, ttl_hours=settings.TEMP_FILE_TTL_HOURS)
+            except Exception as e:
+                logger.warning(f"Initial auto-cleanup warning: {e}")
 
-    # Lifespan Shutdown
-    logger.info("SmartDoc Backend shutting down...")
-    cleanup_task.cancel()
-    try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass
-    await engine.dispose()
+            cleanup_task = asyncio.create_task(_periodic_temp_cleanup_task())
+            try:
+                yield
+            finally:
+                logger.info("SmartDoc Backend shutting down...")
+                cleanup_task.cancel()
+                try:
+                    await cleanup_task
+                except asyncio.CancelledError:
+                    pass
+    finally:
+        await engine.dispose()
 
 
 from slowapi.errors import RateLimitExceeded
@@ -93,14 +103,15 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(RequestSizeLimitMiddleware)
+app.add_middleware(AuthCacheMiddleware)
 
 # CORS Middleware — whitelisted origins, spesifik method & header
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.get_cors_origins(),
-    allow_credentials=False,
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-Request-ID", "X-CSRF-Token"],
 )
 
 # Global Exception Handlers for standard response structure
@@ -143,6 +154,8 @@ async def general_exception_handler(request: Request, exc: Exception):
 # Register Routers
 app.include_router(auth_router)
 app.include_router(guest_router)
+app.include_router(workspace_router)
+app.include_router(admin_router)
 app.include_router(jobs_router)
 app.include_router(compressor_router)
 app.include_router(converter_router)

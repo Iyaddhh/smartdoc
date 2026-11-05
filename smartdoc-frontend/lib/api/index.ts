@@ -7,3 +7,4 @@ export * from "./splitter";
 export * from "./merger";
 export * from "./watermark";
 export * from "./documents";
+export { apiFetch } from "./client";

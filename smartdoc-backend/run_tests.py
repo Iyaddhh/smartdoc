@@ -41,9 +41,16 @@ async def main():
             )
             try:
                 await test_connection.execute(
-                    "INSERT INTO users (id, username, email, hashed_password, role, is_active) VALUES ($1,$2,$3,$4,$5,true)",
+                    "INSERT INTO users (id, username, email, hashed_password, role, is_active, email_verified) VALUES ($1,$2,$3,$4,$5,true,true)",
                     uuid.UUID("1223bef8-242e-4e79-b4ff-4db9e450e1fa"),
                     "smartdoc_test", "test@example.invalid", "unused-test-hash", "user",
+                )
+                await test_connection.execute(
+                    "INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, remember_me) "
+                    "VALUES ($1, $2, $3, (now() AT TIME ZONE 'UTC') + interval '1 day', false)",
+                    uuid.UUID("a3a477a7-3a4b-4dde-8bbd-30aa31cfa900"),
+                    uuid.UUID("1223bef8-242e-4e79-b4ff-4db9e450e1fa"),
+                    "disposable-test-session".ljust(64, "0"),
                 )
             finally:
                 await test_connection.close()

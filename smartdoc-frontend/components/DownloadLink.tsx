@@ -20,6 +20,7 @@ export default function DownloadLink({ href, onClick, children, ...props }: Comp
       link.href = url;
       link.download = filename || (typeof props.download === "string" ? props.download : "dokumen");
       link.click();
+      showToast("info", "Unduhan dimulai. Periksa daftar unduhan browser Anda.");
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Gagal mengunduh berkas.");

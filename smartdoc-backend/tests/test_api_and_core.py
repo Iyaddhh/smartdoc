@@ -71,7 +71,7 @@ async def test_global_exception_handler_format_on_422(auth_client: AsyncClient):
 def test_categorized_size_limits_config():
     assert settings.get_max_size_for_extension("docx") == 35 * 1024 * 1024
     assert settings.get_max_size_for_extension("xlsx") == 35 * 1024 * 1024
-    assert settings.get_max_size_for_extension("pptx") == 35 * 1024 * 1024
+    assert settings.get_max_size_for_extension("pptx") == 200 * 1024 * 1024
     assert settings.get_max_size_for_extension("pdf") == 35 * 1024 * 1024
     assert settings.get_max_size_for_extension("png") == 12 * 1024 * 1024
     assert settings.get_max_size_for_extension("jpg") == 12 * 1024 * 1024
@@ -150,9 +150,11 @@ async def test_rate_limiter_blocks_excessive_logins():
     """Memvalidasi bahwa Rate Limiter memblokir request ke-16 ke /api/auth/login dengan HTTP 429."""
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        await client.get("/api/auth/csrf")
+        client.headers["x-csrf-token"] = client.cookies.get("smartdoc_csrf")
         responses = []
         for i in range(16):
-            res = await client.post("/api/auth/login", data={"username": "fake", "password": "wrong"})
+            res = await client.post("/api/auth/login", json={"email": "fake@example.com", "password": "wrong"})
             responses.append(res.status_code)
 
         # The 16th request should be rate-limited (HTTP 429)

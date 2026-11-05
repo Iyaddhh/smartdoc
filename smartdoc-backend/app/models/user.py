@@ -15,6 +15,11 @@ class User(Base):
     role = Column(String(20), default="user", nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     token_version = Column(Integer, default=0, server_default="0", nullable=False)
+    email_verified = Column(Boolean, default=False, server_default="false", nullable=False)
+    display_name = Column(String(100), default="", server_default="", nullable=False)
+    timezone = Column(String(60), default="Asia/Jakarta", server_default="Asia/Jakarta", nullable=False)
+    onboarding_complete = Column(Boolean, default=False, server_default="false", nullable=False)
+    storage_quota_mb = Column(Integer, default=500, server_default="500", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     __table_args__ = (

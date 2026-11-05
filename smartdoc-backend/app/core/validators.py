@@ -3,6 +3,8 @@ import io
 import zipfile
 import asyncio
 from typing import List, Optional
+from pathlib import Path
+from typing import BinaryIO
 import filetype
 from fastapi import UploadFile, HTTPException
 from pypdf import PdfReader
@@ -26,13 +28,11 @@ def validate_file_extension(filename: str, allowed_extensions: set) -> str:
     return ext
 
 
-async def validate_and_read_upload(file: UploadFile, ext: str, max_size_bytes: Optional[int] = None) -> bytes:
-    """
-    Membaca berkas upload secara streaming (chunk 1MB) dan langsung menolak jika ukuran
-    melebihi limit kategori sebelum seluruh berkas membebani memori RAM.
-    """
+def upload_size_limit(file: UploadFile, ext: str, max_size_bytes: Optional[int] = None) -> int:
+    """Shared limit for buffered and disk-backed readers; zero means no capacity."""
     validate_file_extension(file.filename or "", ALLOWED_CONVERTER_EXTENSIONS)
-    max_bytes = min(max_size_bytes or settings.get_max_size_for_extension(ext), settings.get_max_size_for_extension(ext))
+    category = settings.get_max_size_for_extension(ext)
+    max_bytes = min(category if max_size_bytes is None else max_size_bytes, category)
     max_mb = max_bytes // (1024 * 1024)
 
     # 1. Cek Content-Length header jika tersedia dari client
@@ -47,6 +47,13 @@ async def validate_and_read_upload(file: UploadFile, ext: str, max_size_bytes: O
                 )
         except ValueError:
             pass
+    return max_bytes
+
+
+async def validate_and_read_upload(file: UploadFile, ext: str, max_size_bytes: Optional[int] = None) -> bytes:
+    """Read small tool inputs with early limits; large PPTX uses disk staging."""
+    max_bytes = upload_size_limit(file, ext, max_size_bytes)
+    max_mb = max_bytes // (1024 * 1024)
 
     # 2. Chunked stream reading dengan early abort
     chunks: List[bytes] = []
@@ -130,24 +137,31 @@ def validate_file_magic_bytes(content: bytes, ext: str) -> None:
         validate_office_archive(content, ext_lower)
 
 
-def validate_office_archive(content: bytes, ext: str) -> None:
+def validate_office_archive(content: bytes | str | Path | BinaryIO, ext: str) -> None:
     """Check the ZIP directory before any entry is decompressed or passed to an engine."""
     required = {"docx": "word/document.xml", "xlsx": "xl/workbook.xml", "pptx": "ppt/presentation.xml"}
+    ext = ext.lower().lstrip(".")
+    is_pptx = ext == "pptx"
+    max_entry_mb = settings.MAX_PPTX_ENTRY_MB if is_pptx else settings.MAX_OFFICE_ENTRY_MB
+    max_uncompressed_mb = settings.MAX_PPTX_UNCOMPRESSED_MB if is_pptx else settings.MAX_OFFICE_UNCOMPRESSED_MB
+    max_entries = settings.MAX_PPTX_ENTRIES if is_pptx else settings.MAX_OFFICE_ENTRIES
     try:
-        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+        with zipfile.ZipFile(io.BytesIO(content) if isinstance(content, bytes) else content) as archive:
             entries = archive.infolist()
             names = {entry.filename for entry in entries}
             if "[Content_Types].xml" not in names or required[ext.lstrip(".")] not in names:
                 raise HTTPException(status_code=400, detail="Struktur dokumen Office tidak sesuai ekstensi.")
-            if len(entries) > settings.MAX_OFFICE_ENTRIES or len(names) != len(entries):
-                raise HTTPException(status_code=413, detail="Jumlah entri dokumen Office tidak diizinkan.")
+            if len(names) != len(entries):
+                raise HTTPException(status_code=400, detail="Dokumen Office memiliki komponen duplikat. Simpan ulang berkas melalui aplikasi Office.")
+            if len(entries) > max_entries:
+                raise HTTPException(status_code=413, detail=f"Dokumen {ext.lstrip('.').upper()} berisi {len(entries)} komponen internal, melebihi batas {max_entries} komponen.")
             total = 0
             for entry in entries:
                 total += entry.file_size
                 if entry.flag_bits & 1:
                     raise HTTPException(status_code=400, detail="Dokumen Office terenkripsi tidak didukung.")
-                if (entry.file_size > settings.MAX_OFFICE_ENTRY_MB * 1024 * 1024
-                    or total > settings.MAX_OFFICE_UNCOMPRESSED_MB * 1024 * 1024
+                if (entry.file_size > max_entry_mb * 1024 * 1024
+                    or total > max_uncompressed_mb * 1024 * 1024
                     or entry.file_size / max(1, entry.compress_size) > settings.MAX_OFFICE_COMPRESSION_RATIO):
                     raise HTTPException(status_code=413, detail="Dokumen Office melebihi batas dekompresi aman.")
     except HTTPException:

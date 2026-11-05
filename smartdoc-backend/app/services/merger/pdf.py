@@ -5,6 +5,8 @@ from typing import List, Optional
 from pypdf import PdfReader, PdfWriter
 from app.core.logger import logger
 from app.services.converter import convert_office_to_pdf, images_to_pdf
+from app.core.config import settings
+from app.core.validators import validate_pdf_pages
 
 OFFICE_EXTENSIONS = {".docx", ".xlsx", ".pptx"}
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
@@ -40,10 +42,12 @@ def merge_documents(input_paths: List[str], output_path: str) -> bool:
     try:
         for path in input_paths:
             if not os.path.exists(path):
-                logger.warning(f"File tidak ditemukan untuk digabungkan: {path}")
-                continue
+                raise FileNotFoundError("Salah satu berkas yang akan digabungkan tidak tersedia.")
 
             working_pdf = _prepare_working_pdf(path, temp_files_to_clean)
+            count = validate_pdf_pages(working_pdf)
+            if len(writer.pages) + count > settings.MAX_PDF_PAGES:
+                raise ValueError("Total halaman melebihi batas pemrosesan.")
             reader = PdfReader(working_pdf)
             for page in reader.pages:
                 writer.add_page(page)
@@ -90,6 +94,8 @@ def insert_document(
     try:
         main_pdf = _prepare_working_pdf(main_doc_path, temp_files_to_clean)
         insert_pdf = _prepare_working_pdf(insert_doc_path, temp_files_to_clean)
+        if validate_pdf_pages(main_pdf) + validate_pdf_pages(insert_pdf) > settings.MAX_PDF_PAGES:
+            raise ValueError("Total halaman melebihi batas pemrosesan.")
 
         main_reader = PdfReader(main_pdf)
         insert_reader = PdfReader(insert_pdf)
@@ -108,7 +114,9 @@ def insert_document(
 
         elif insert_position == "custom":
             # Sisipkan setelah halaman ke-`after_page` (1-indexed)
-            split_idx = max(0, min(total_main, after_page))
+            if not 1 <= after_page <= total_main:
+                raise ValueError("Posisi sisipan di luar jumlah halaman dokumen utama.")
+            split_idx = after_page
             # Halaman awal sampai split_idx
             for p in main_pages[:split_idx]:
                 writer.add_page(p)

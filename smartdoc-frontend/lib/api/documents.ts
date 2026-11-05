@@ -1,6 +1,6 @@
 import { apiFetch, API_BASE } from "./client";
 import type { ApiResponse, DocumentItem } from "./types";
-import { getToken, handleUnauthorized } from "../auth-token";
+import { fetchFile } from "./files";
 
 export async function fetchFirstPagePreview(file: File): Promise<ApiResponse<{ thumbnail: string; thumbnails?: string[]; total_pages?: number; filename: string }>> {
   const form = new FormData();
@@ -32,6 +32,8 @@ export function getDownloadUrl(docId: string): string {
   return `${API_BASE}/api/documents/${docId}/download`;
 }
 
+export const saveDocument = (id: string) => apiFetch<DocumentItem>(`/api/documents/${id}/save`, { method: "POST" });
+
 export function getPreviewUrl(docId: string): string {
   return `${API_BASE}/api/documents/${docId}/preview`;
 }
@@ -61,21 +63,12 @@ export async function batchDeleteDocuments(docIds: string[]): Promise<ApiRespons
 }
 
 export async function batchDownloadDocuments(docIds: string[]): Promise<Blob> {
-  const token = getToken();
-  const res = await fetch(`${API_BASE}/api/documents/batch-download`, {
+  const { blob } = await fetchFile("/api/documents/batch-download", undefined, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body: JSON.stringify({ ids: docIds }),
   });
-  if (!res.ok) {
-    if (res.status === 401 && typeof window !== "undefined") {
-      handleUnauthorized(token);
-    }
-    const errorData = await res.json().catch(() => null);
-    throw new Error(errorData?.message || "Gagal mengunduh berkas terpilih.");
-  }
-  return res.blob();
+  return blob;
 }

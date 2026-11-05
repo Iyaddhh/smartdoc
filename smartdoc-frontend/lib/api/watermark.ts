@@ -2,6 +2,7 @@ import { apiFetch } from "./client";
 import type { ApiResponse } from "./types";
 
 export async function watermarkDocument(params: {
+  saveToWorkspace?: boolean;
   file: File;
   watermarkText?: string;
   opacity?: number;
@@ -11,6 +12,7 @@ export async function watermarkDocument(params: {
   password?: string;
 }): Promise<ApiResponse<{ job_id: string; document_id: string; original_filename: string; custom_name: string; has_password: boolean }>> {
   const form = new FormData();
+  form.append("save_to_workspace", String(params.saveToWorkspace ?? false));
   form.append("file", params.file);
   if (params.watermarkText) form.append("watermark_text", params.watermarkText);
   if (params.opacity !== undefined) form.append("opacity", String(params.opacity));

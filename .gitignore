@@ -4,6 +4,8 @@
 .env*.local
 lint-results.json
 stage1_edit.py
+.local-mail/
+.browser-test/
 
 # Python / Backend (smartdoc-backend)
 __pycache__/
@@ -27,6 +29,11 @@ node_modules/
 out/
 
 # Storage / Uploads / Outputs
+/storage/work/
+/storage/results/
+/storage/manual-compression/
+/smartdoc-backend/storage/work/
+/smartdoc-backend/storage/results/
 storage/documents/originals/*
 !storage/documents/originals/.gitkeep
 storage/documents/outputs/*

@@ -1,5 +1,8 @@
 "use client";
 
+import PageHeading from "@/components/ui/PageHeading";
+import ToolStorage from "@/components/ToolStorage";
+
 import DownloadLink from "@/components/DownloadLink";
 
 import { useState } from "react";
@@ -32,6 +35,7 @@ const COLOR_OPTIONS = [
 ];
 
 export default function WatermarkPage() {
+  const [saveToWorkspace, setSaveToWorkspace] = useState(false);
   const [file, setFile] = useState<File | null>(null);
 
   // Watermark Settings
@@ -39,7 +43,7 @@ export default function WatermarkPage() {
   const [watermarkText, setWatermarkText] = useState("CONFIDENTIAL");
   const [opacity, setOpacity] = useState(0.25);
   const [angle, setAngle] = useState(45);
-  const [fontSize, setFontSize] = useState(44);
+  const fontSize = 44;
   const [colorHex, setColorHex] = useState("#64748b");
 
   // Security / Password Settings
@@ -91,7 +95,7 @@ export default function WatermarkPage() {
     }
 
     const finalWatermarkText = enableWatermark ? watermarkText.trim() : "";
-    if (!finalWatermarkText && (!enablePassword || !password.trim())) {
+    if (!finalWatermarkText && (!enablePassword || !password)) {
       setSubmitError("Harap aktifkan teks watermark atau masukkan kata sandi penguncian.");
       showToast("warning", "Pilih minimal watermark atau kata sandi.", "Validasi");
       return;
@@ -102,13 +106,14 @@ export default function WatermarkPage() {
     setDoneJob(null);
 
     const res = await watermarkDocument({
+      saveToWorkspace,
       file,
       watermarkText: finalWatermarkText || undefined,
       opacity,
       angle,
       fontSize,
       colorHex,
-      password: enablePassword && password.trim() ? password.trim() : undefined,
+      password: enablePassword && password ? password : undefined,
     });
 
     if (!res.success || !res.data) {
@@ -138,21 +143,18 @@ export default function WatermarkPage() {
     <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "28px" }}>
       {/* Header */}
       <div className="page-header" style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: "12px" }}>
-        <div>
-          <h2>
-            Watermark & <span className="highlight-span">Proteksi Dokumen</span>
-          </h2>
-          <p>Beri cap air visual kustom dan amankan berkas PDF Anda dengan enkripsi kata sandi kuat.</p>
+          <PageHeading title="Watermark & sandi" description="Tambahkan tanda air dan perlindungan kata sandi pada dokumen." />
+          <GuideButton onClick={() => setShowGuide(true)} />
         </div>
-        <GuideButton onClick={() => setShowGuide(true)} />
-      </div>
+      <ToolStorage value={saveToWorkspace} onChange={setSaveToWorkspace} disabled={Boolean(jobId)} documentId={documentId} done={isDone} />
+
 
       <div className="grid-2" style={{ alignItems: "start" }}>
         {/* Left Column: Configuration Controls */}
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           {/* Step 1: Upload */}
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+            <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
               1. Unggah Berkas
             </h3>
             <FileUpload
@@ -169,18 +171,18 @@ export default function WatermarkPage() {
           <div className="card" style={{ display: "flex", flexDirection: "column", gap: "16px", opacity: isFileLoading ? 0.6 : 1 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                <Type size={16} style={{ color: "var(--color-cyan-edge)" }} />
-                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)", margin: 0 }}>
+                <Type size={16} style={{ color: "var(--color-electric-blue)" }} />
+                <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)", margin: 0 }}>
                   2. Pengaturan Cap Air (Watermark)
                 </h3>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                 {isFileLoading && (
-                  <span style={{ fontSize: "11.5px", color: "var(--color-cyan-edge)", display: "flex", alignItems: "center", gap: "4px" }}>
+                  <span style={{ fontSize: "11.5px", color: "var(--color-electric-blue)", display: "flex", alignItems: "center", gap: "4px" }}>
                     <span className="animate-spin">⟳</span> Menyiapkan...
                   </span>
                 )}
-                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", cursor: "pointer", color: "var(--color-ink-black)", fontWeight: 500 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", cursor: "pointer", color: "var(--color-midnight-ink)", fontWeight: 500 }}>
                   <input
                     type="checkbox"
                     checked={enableWatermark}
@@ -192,7 +194,7 @@ export default function WatermarkPage() {
                       }
                     }}
                     disabled={!!jobId || isFileLoading}
-                    style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--color-cyan-edge)" }}
+                    style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--color-electric-blue)" }}
                   />
                   <span>Gunakan Watermark</span>
                 </label>
@@ -203,11 +205,11 @@ export default function WatermarkPage() {
               <div
                 style={{
                   padding: "12px 14px",
-                  background: "var(--color-stone-canvas)",
-                  border: "1px dashed var(--color-stone-border)",
+                  background: "var(--color-canvas-white)",
+                  border: "1px dashed var(--color-ash)",
                   borderRadius: "var(--radius-cards)",
                   fontSize: "12.5px",
-                  color: "var(--color-warm-gray)",
+                  color: "var(--color-graphite)",
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
@@ -220,12 +222,13 @@ export default function WatermarkPage() {
               <>
                 {/* Watermark Text Input */}
                 <div>
-                  <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                  <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-midnight-ink)" }}>
                     Teks Watermark:
                   </label>
                   <input
                     className="input"
                     value={watermarkText}
+                    maxLength={200}
                     onChange={(e) => setWatermarkText(e.target.value)}
                     disabled={!!jobId || isFileLoading}
                     placeholder="cth: CONFIDENTIAL / RAHASIA"
@@ -243,9 +246,9 @@ export default function WatermarkPage() {
                           fontSize: "11px",
                           padding: "2px 8px",
                           borderRadius: "var(--radius-tags)",
-                          background: watermarkText === t ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
-                          color: watermarkText === t ? "var(--color-pure-white)" : "var(--color-warm-gray)",
-                          border: "1px solid var(--color-stone-border)",
+                          background: watermarkText === t ? "var(--color-midnight-ink)" : "var(--color-canvas-white)",
+                          color: watermarkText === t ? "var(--color-canvas-white)" : "var(--color-graphite)",
+                          border: "1px solid var(--color-ash)",
                           cursor: (jobId || isFileLoading) ? "default" : "pointer",
                           transition: "var(--transition-fast)",
                         }}
@@ -259,10 +262,10 @@ export default function WatermarkPage() {
                 {/* Opacity Slider */}
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "4px" }}>
-                    <label style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-ink-black)" }}>
+                    <label style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                       Transparansi (Opasitas):
                     </label>
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-cyan-edge)" }}>
+                    <span style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-electric-blue)" }}>
                       {Math.round(opacity * 100)}%
                     </span>
                   </div>
@@ -274,7 +277,7 @@ export default function WatermarkPage() {
                     value={opacity}
                     onChange={(e) => setOpacity(parseFloat(e.target.value))}
                     disabled={!!jobId || isFileLoading}
-                    style={{ width: "100%", accentColor: "var(--color-cyan-edge)" }}
+                    style={{ width: "100%", accentColor: "var(--color-electric-blue)" }}
                   />
                 </div>
 
@@ -282,7 +285,7 @@ export default function WatermarkPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   {/* Angle */}
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-midnight-ink)" }}>
                       Sudut Rotasi:
                     </label>
                     <div style={{ display: "flex", gap: "6px" }}>
@@ -302,9 +305,9 @@ export default function WatermarkPage() {
                             fontSize: "12px",
                             fontWeight: 500,
                             borderRadius: "var(--radius-inputs)",
-                            background: angle === item.val ? "var(--color-ink-black)" : "var(--color-stone-canvas)",
-                            color: angle === item.val ? "var(--color-pure-white)" : "var(--color-warm-gray)",
-                            border: "1px solid var(--color-stone-border)",
+                            background: angle === item.val ? "var(--color-midnight-ink)" : "var(--color-canvas-white)",
+                            color: angle === item.val ? "var(--color-canvas-white)" : "var(--color-graphite)",
+                            border: "1px solid var(--color-ash)",
                             cursor: (jobId || isFileLoading) ? "default" : "pointer",
                           }}
                         >
@@ -316,7 +319,7 @@ export default function WatermarkPage() {
 
                   {/* Color Selection */}
                   <div>
-                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-ink-black)" }}>
+                    <label style={{ fontSize: "12px", fontWeight: 500, display: "block", marginBottom: "4px", color: "var(--color-midnight-ink)" }}>
                       Warna Cap:
                     </label>
                     <div style={{ display: "flex", gap: "8px", alignItems: "center", height: "30px" }}>
@@ -332,7 +335,7 @@ export default function WatermarkPage() {
                             height: 22,
                             borderRadius: "50%",
                             background: c.hex,
-                            border: colorHex === c.hex ? "2px solid var(--color-ink-black)" : "1px solid rgba(0,0,0,0.15)",
+                            border: colorHex === c.hex ? "2px solid var(--color-midnight-ink)" : "1px solid rgba(0,0,0,0.15)",
                             transform: colorHex === c.hex ? "scale(1.15)" : "scale(1)",
                             cursor: (jobId || isFileLoading) ? "default" : "pointer",
                             transition: "var(--transition-fast)",
@@ -351,7 +354,7 @@ export default function WatermarkPage() {
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                 <Lock size={16} style={{ color: "var(--clr-success)" }} />
-                <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                   3. Proteksi Kata Sandi (Opsional)
                 </h3>
               </div>
@@ -360,13 +363,13 @@ export default function WatermarkPage() {
                 checked={enablePassword}
                 onChange={(e) => setEnablePassword(e.target.checked)}
                 disabled={!!jobId || isFileLoading}
-                style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--color-cyan-edge)" }}
+                style={{ width: 16, height: 16, cursor: "pointer", accentColor: "var(--color-electric-blue)" }}
               />
             </div>
 
             {enablePassword && (
               <div className="animate-fade-in" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-ink-black)" }}>
+                <label style={{ fontSize: "12px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                   Kata Sandi Pembuka PDF:
                 </label>
                 <div style={{ position: "relative" }}>
@@ -374,6 +377,7 @@ export default function WatermarkPage() {
                     type={showPassword ? "text" : "password"}
                     className="input"
                     value={password}
+                    maxLength={128}
                     onChange={(e) => setPassword(e.target.value)}
                     disabled={!!jobId || isFileLoading}
                     placeholder="Masukkan password kuat..."
@@ -387,14 +391,14 @@ export default function WatermarkPage() {
                       right: "8px",
                       top: "50%",
                       transform: "translateY(-50%)",
-                      color: "var(--color-ash-gray)",
+                      color: "var(--color-graphite)",
                       padding: "4px",
                     }}
                   >
                     {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                   </button>
                 </div>
-                <span style={{ fontSize: "11px", color: "var(--color-ash-gray)" }}>
+                <span style={{ fontSize: "11px", color: "var(--color-graphite)" }}>
                   Dokumen akan dienkripsi dengan standar AES-128 bit.
                 </span>
               </div>
@@ -450,10 +454,10 @@ export default function WatermarkPage() {
                   <CheckCircle2 size={22} style={{ color: "var(--clr-success)" }} />
                 </div>
                 <div>
-                  <h3 style={{ fontSize: "16px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                     Dokumen Berhasil Diamankan!
                   </h3>
-                  <p style={{ fontSize: "13px", color: "var(--color-warm-gray)" }}>
+                  <p style={{ fontSize: "13px", color: "var(--color-graphite)" }}>
                     {enablePassword && !enableWatermark
                       ? "Enkripsi kata sandi (tanpa watermark) telah berhasil diterapkan."
                       : enablePassword && enableWatermark
@@ -479,8 +483,8 @@ export default function WatermarkPage() {
             <div className="card" style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <Eye size={16} style={{ color: "var(--color-cyan-edge)" }} />
-                  <h3 style={{ fontSize: "15px", fontWeight: 600, color: "var(--color-ink-black)" }}>
+                  <Eye size={16} style={{ color: "var(--color-electric-blue)" }} />
+                  <h3 style={{ fontSize: "15px", fontWeight: 500, color: "var(--color-midnight-ink)" }}>
                     Pratinjau Langsung (Live Visual Preview)
                   </h3>
                 </div>
@@ -497,10 +501,10 @@ export default function WatermarkPage() {
                   position: "relative",
                   width: "100%",
                   height: "360px",
-                  background: "#ffffff",
-                  border: "1px solid var(--color-stone-border)",
+                  background: "var(--color-canvas-white)",
+                  border: "1px solid var(--color-ash)",
                   borderRadius: "var(--radius-cards)",
-                  boxShadow: "var(--shadow-md)",
+                  boxShadow: "none",
                   display: "flex",
                   flexDirection: "column",
                   padding: "24px 28px",
@@ -509,17 +513,17 @@ export default function WatermarkPage() {
                 }}
               >
                 {/* Simulated Document Lines */}
-                <div style={{ width: "40%", height: "10px", background: "#e2e8f0", borderRadius: "4px", marginBottom: "16px" }} />
-                <div style={{ width: "100%", height: "6px", background: "#f1f5f9", borderRadius: "3px", marginBottom: "8px" }} />
-                <div style={{ width: "92%", height: "6px", background: "#f1f5f9", borderRadius: "3px", marginBottom: "8px" }} />
-                <div style={{ width: "96%", height: "6px", background: "#f1f5f9", borderRadius: "3px", marginBottom: "8px" }} />
-                <div style={{ width: "75%", height: "6px", background: "#f1f5f9", borderRadius: "3px", marginBottom: "20px" }} />
+                <div style={{ width: "40%", height: "10px", background: "var(--color-smoke)", borderRadius: "var(--radius-cardssmall)", marginBottom: "16px" }} />
+                <div style={{ width: "100%", height: "6px", background: "var(--color-paper-mist)", borderRadius: "3px", marginBottom: "8px" }} />
+                <div style={{ width: "92%", height: "6px", background: "var(--color-paper-mist)", borderRadius: "3px", marginBottom: "8px" }} />
+                <div style={{ width: "96%", height: "6px", background: "var(--color-paper-mist)", borderRadius: "3px", marginBottom: "8px" }} />
+                <div style={{ width: "75%", height: "6px", background: "var(--color-paper-mist)", borderRadius: "3px", marginBottom: "20px" }} />
 
-                <div style={{ width: "100%", height: "60px", background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "6px", marginBottom: "20px" }} />
+                <div style={{ width: "100%", height: "60px", background: "var(--color-canvas-white)", border: "1px solid var(--color-smoke)", borderRadius: "var(--radius-cardssmall)", marginBottom: "20px" }} />
 
-                <div style={{ width: "95%", height: "6px", background: "#f1f5f9", borderRadius: "3px", marginBottom: "8px" }} />
-                <div style={{ width: "88%", height: "6px", background: "#f1f5f9", borderRadius: "3px", marginBottom: "8px" }} />
-                <div style={{ width: "60%", height: "6px", background: "#f1f5f9", borderRadius: "3px" }} />
+                <div style={{ width: "95%", height: "6px", background: "var(--color-paper-mist)", borderRadius: "3px", marginBottom: "8px" }} />
+                <div style={{ width: "88%", height: "6px", background: "var(--color-paper-mist)", borderRadius: "3px", marginBottom: "8px" }} />
+                <div style={{ width: "60%", height: "6px", background: "var(--color-paper-mist)", borderRadius: "3px" }} />
 
                 {/* Overlaid Dynamic Watermark */}
                 {enableWatermark && watermarkText.trim() && (
@@ -552,9 +556,9 @@ export default function WatermarkPage() {
                 )}
               </div>
 
-              <div style={{ borderTop: "1px solid var(--color-stone-border)", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12.5px" }}>
-                <span style={{ color: "var(--color-ash-gray)" }}>Hasil disimpan otomatis</span>
-                <Link href="/riwayat-dokumen" style={{ color: "var(--color-cyan-edge)", fontWeight: 500 }}>
+              <div style={{ borderTop: "1px solid var(--color-ash)", paddingTop: "12px", display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "12.5px" }}>
+                <span style={{ color: "var(--color-graphite)" }}>Hasil disimpan otomatis</span>
+                <Link href="/riwayat-dokumen" style={{ color: "var(--color-electric-blue)", fontWeight: 500 }}>
                   Lihat Riwayat Dokumen →
                 </Link>
               </div>
